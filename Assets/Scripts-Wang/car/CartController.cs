@@ -85,14 +85,16 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
     public void OnBeginDrag(PointerEventData eventData)
     {
-        canDrag = CanStartMove();
+        canDrag = true;
 
-        if (!canDrag)
+        if (currentNode != null)
         {
-            return;
+            startWorldPosition = currentNode.transform.position;
         }
-
-        startWorldPosition = transform.position;
+        else
+        {
+            startWorldPosition = transform.position;
+        }
     }
 
     public void OnDrag(PointerEventData eventData)
@@ -105,6 +107,15 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     public void OnEndDrag(PointerEventData eventData)
     {
         if (!canDrag) return;
+
+        canDrag = false;
+
+        // 注意：现在是在松手时才判断当前区域能不能移动
+        if (!CanStartMove())
+        {
+            ReturnToStart();
+            return;
+        }
 
         RoadNode targetNode = FindNearestNode();
 
@@ -188,7 +199,7 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
     private RoadNode FindNearestNode()
     {
-        RoadNode[] nodes = FindObjectsOfType<RoadNode>();
+        RoadNode[] nodes = FindObjectsByType<RoadNode>(FindObjectsSortMode.None);
 
         RoadNode nearestNode = null;
         float nearestDistance = snapDistance;
