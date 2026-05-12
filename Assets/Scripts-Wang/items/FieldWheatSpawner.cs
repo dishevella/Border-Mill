@@ -58,7 +58,7 @@ public class FieldWheatSpawner : MonoBehaviour, IPointerDownHandler, IDragHandle
 
         if (currentTime != requiredTime)
         {
-            Debug.Log("²»ÄÜÉú³ÉÂóËë£ºÂóÌïµ±Ç°²»ÊÇ Autumn£¬¶øÊÇ " + currentTime);
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ë£ºï¿½ï¿½ï¿½ïµ±Ç°ï¿½ï¿½ï¿½ï¿½ Autumnï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ " + currentTime);
             return false;
         }
 
@@ -69,7 +69,7 @@ public class FieldWheatSpawner : MonoBehaviour, IPointerDownHandler, IDragHandle
     {
         if (wheatPrefab == null || itemLayer == null)
         {
-            Debug.LogWarning("FieldWheatSpawner Ã»ÓĞÉèÖÃ Wheat Prefab »ò Item Layer");
+            Debug.LogWarning("FieldWheatSpawner Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Wheat Prefab ï¿½ï¿½ Item Layer");
             return;
         }
 
@@ -129,11 +129,11 @@ public class FieldWheatSpawner : MonoBehaviour, IPointerDownHandler, IDragHandle
 
         if (loadedToCart)
         {
-            Debug.Log("ÂóËë³É¹¦×°ÈëĞ¡ÍÆ³µ");
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½É¹ï¿½×°ï¿½ï¿½Ğ¡ï¿½Æ³ï¿½");
         }
         else
         {
-            Debug.Log("ÂóËëÃ»ÓĞ×°ÈëĞ¡ÍÆ³µ£¬ÒÑÏûÊ§");
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½Ã»ï¿½ï¿½×°ï¿½ï¿½Ğ¡ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ê§");
         }
     }
 
@@ -141,19 +141,19 @@ public class FieldWheatSpawner : MonoBehaviour, IPointerDownHandler, IDragHandle
     {
         if (targetCart == null)
         {
-            Debug.LogWarning("Ã»ÓĞÉèÖÃ Target Cart£¬ÂóËëÎŞ·¨×°ÈëĞ¡ÍÆ³µ");
+            Debug.LogWarning("Ã»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ Target Cartï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ş·ï¿½×°ï¿½ï¿½Ğ¡ï¿½Æ³ï¿½");
             return false;
         }
 
         if (targetCart.GetCurrentRegion() != fieldRegion)
         {
-            Debug.Log("ÂóËëÎŞ·¨×°Èë£ºĞ¡ÍÆ³µ²»ÔÚÂóÌïÇøÓò");
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½ï¿½Ş·ï¿½×°ï¿½ë£ºĞ¡ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½");
             return false;
         }
 
         if (!IsPointerOverCart(eventData))
         {
-            Debug.Log("ÂóËëÃ»ÓĞ·Åµ½Ğ¡ÍÆ³µÉÏ");
+            Debug.Log("ï¿½ï¿½ï¿½ï¿½Ã»ï¿½Ğ·Åµï¿½Ğ¡ï¿½Æ³ï¿½ï¿½ï¿½");
             return false;
         }
 

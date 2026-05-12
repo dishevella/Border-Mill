@@ -11,7 +11,7 @@ public class TimeManager : MonoBehaviour
     {
         Instance = this;
 
-        // 游戏开始时，四个区域默认都是战时
+        
         regionTimes[RegionID.Mill] = TimeState.War;
         regionTimes[RegionID.Field] = TimeState.War;
         regionTimes[RegionID.Kitchen] = TimeState.War;

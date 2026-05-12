@@ -88,7 +88,7 @@ public class IndoorViewManager : MonoBehaviour
 
         if (data == null)
         {
-            Debug.LogWarning("Ã»ÓÐÕÒµ½ÊÒÄÚ»­ÃæÊý¾Ý£º" + currentRegion.regionName);
+            Debug.LogWarning("Ã»ï¿½ï¿½ï¿½Òµï¿½ï¿½ï¿½ï¿½Ú»ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Ý£ï¿½" + currentRegion.regionName);
             return;
         }
 
@@ -120,7 +120,7 @@ public class IndoorViewManager : MonoBehaviour
         {
             indoorLabel.text =
                 currentRegion.regionName +
-                "\nIndoor / ÊÒÄÚ" +
+                "\nIndoor / ï¿½ï¿½ï¿½ï¿½" +
                 "\nTime: " + currentRegion.currentTime;
         }
     }
@@ -141,7 +141,7 @@ public class IndoorViewManager : MonoBehaviour
         exitButtonRect.sizeDelta = data.indoorExitButtonSize;
 
         Debug.Log(
-            "Exit Button Î»ÖÃ¸üÐÂ£º" +
+            "Exit Button Î»ï¿½Ã¸ï¿½ï¿½Â£ï¿½" +
             currentRegion.regionName +
             " / " +
             currentRegion.currentTime +
