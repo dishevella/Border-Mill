@@ -110,7 +110,7 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
         canDrag = false;
 
-        // ×¢Òâ£ºÏÖÔÚÊÇÔÚËÉÊÖÊ±²ÅÅÐ¶Ïµ±Ç°ÇøÓòÄÜ²»ÄÜÒÆ¶¯
+        
         if (!CanStartMove())
         {
             ReturnToStart();
@@ -138,7 +138,7 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     {
         if (currentNode == null)
         {
-            Debug.LogWarning("Ð¡ÍÆ³µÃ»ÓÐ currentNode");
+            Debug.LogWarning("Ð¡ï¿½Æ³ï¿½Ã»ï¿½ï¿½ currentNode");
             return false;
         }
 
@@ -146,7 +146,7 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
 
         if (currentRegionTime != TimeState.Spring)
         {
-            Debug.Log("Ð¡ÍÆ³µ²»ÄÜÒÆ¶¯£ºµ±Ç°ËùÔÚÇøÓò " + currentNode.regionID + " ²»ÊÇ Spring£¬¶øÊÇ " + currentRegionTime);
+            Debug.Log("Ð¡ï¿½Æ³ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½Æ¶ï¿½ï¿½ï¿½ï¿½ï¿½Ç°ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ " + currentNode.regionID + " ï¿½ï¿½ï¿½ï¿½ Springï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ " + currentRegionTime);
             return false;
         }
 
@@ -164,7 +164,7 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
                 if (segment.IsPassable(out string reason))
                 {
                     MoveToNode(targetNode);
-                    Debug.Log("Ð¡ÍÆ³µÒÆ¶¯³É¹¦£º" + currentNode.nodeName);
+                    Debug.Log("Ð¡ï¿½Æ³ï¿½ï¿½Æ¶ï¿½ï¿½É¹ï¿½ï¿½ï¿½" + currentNode.nodeName);
                     return;
                 }
                 else
@@ -176,7 +176,7 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
             }
         }
 
-        Debug.Log("Ä¿±ê½Úµã²»ÊÇÏàÁÚ½Úµã£¬²»ÄÜÖ±½ÓÒÆ¶¯");
+        Debug.Log("Ä¿ï¿½ï¿½Úµã²»ï¿½ï¿½ï¿½ï¿½ï¿½Ú½Úµã£¬ï¿½ï¿½ï¿½ï¿½Ö±ï¿½ï¿½ï¿½Æ¶ï¿½");
         ReturnToStart();
     }
 
@@ -248,14 +248,14 @@ public class CartController : MonoBehaviour, IBeginDragHandler, IDragHandler, IE
     {
         if (currentCargo != CartCargo.Empty)
         {
-            Debug.Log("Ð¡ÍÆ³µÒÑ¾­ÓÐ¶«Î÷ÁË£¬²»ÄÜÔÙ×°");
+            Debug.Log("Ð¡ï¿½Æ³ï¿½ï¿½Ñ¾ï¿½ï¿½Ð¶ï¿½ï¿½ï¿½ï¿½Ë£ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½ï¿½×°");
             return false;
         }
 
         currentCargo = cargo;
         RefreshCartVisual();
 
-        Debug.Log("Ð¡ÍÆ³µ×°Èë£º" + cargo);
+        Debug.Log("Ð¡ï¿½Æ³ï¿½×°ï¿½ë£º" + cargo);
         return true;
     }
 
