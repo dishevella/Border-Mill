@@ -172,6 +172,10 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     [SerializeField] private RectTransform finalOverlay;
     [SerializeField] private Text finalText;
 
+    private RectTransform kitchenProcessVisual;
+    private Text kitchenProcessText;
+    private RectTransform cellarGirlVisual;
+    private Text cellarGirlText;
     private WhiteboxDropZone cartDropZone;
     private WhiteboxDropZone kitchenDoorDropZone;
     private WhiteboxDropZone cellarEntranceDropZone;
@@ -274,6 +278,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         BindButton(indoorLoadOvenButton, LoadDoughIntoOven);
         BindButton(indoorMoveBreadToDoorButton, MoveBreadToKitchenDoor);
         BindButton(indoorTakeBreadButton, delegate { AddLog("面包已在地窖入口，切到战时后拖给小女孩。"); });
+        BindIndoorTimeSlider();
 
         kitchenDoorDropZone = SetupDropZone(kitchenDoorDropZoneRect, WhiteboxDropZoneType.KitchenDoor, RegionID.Kitchen);
         cellarEntranceDropZone = SetupDropZone(cellarEntranceDropZoneRect, WhiteboxDropZoneType.CellarEntrance, RegionID.Cellar);
@@ -311,6 +316,28 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             dragLayer.SetAsLastSibling();
         }
+    }
+
+    private void BindIndoorTimeSlider()
+    {
+        if (indoorTimeSlider == null)
+        {
+            return;
+        }
+
+        indoorTimeSlider.wholeNumbers = true;
+        indoorTimeSlider.minValue = 0f;
+        indoorTimeSlider.maxValue = 2f;
+        indoorTimeSlider.onValueChanged.RemoveAllListeners();
+        indoorTimeSlider.onValueChanged.AddListener(delegate(float value)
+        {
+            if (currentIndoorRoom == WhiteboxIndoorRoom.None)
+            {
+                return;
+            }
+
+            SetIndoorTime(SliderValueToTime(value));
+        });
     }
 
     private void RegisterRegionView(RegionID region, RegionBinding binding, params Button[] actionButtons)
@@ -1328,12 +1355,10 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
-        if (regionTimes[RegionID.Field] == TimeState.War &&
-            regionTimes[RegionID.Mill] == TimeState.Spring &&
-            regionTimes[RegionID.Kitchen] == TimeState.War)
+        if (regionTimes[RegionID.Kitchen] == TimeState.War)
         {
             rocketTriggered = true;
-            AddLog("火箭事件触发：战时火箭被春天强风带偏，钉在厨房窗框上。");
+            AddLog("厨房进入战时：燃烧火箭钉在窗框上，可以直接用来点燃炉膛。");
 
             if (currentIndoorRoom == WhiteboxIndoorRoom.Kitchen)
             {
@@ -1344,14 +1369,15 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private void SpawnArrowInKitchenIfNeeded()
     {
-        if (!rocketTriggered || ovenLit || FindToken(WhiteboxTokenType.Arrow) != null)
+        if (!rocketTriggered || ovenLit || regionTimes[RegionID.Kitchen] != TimeState.War || FindToken(WhiteboxTokenType.Arrow) != null)
         {
             return;
         }
 
-        if (indoorTokenLayer != null)
+        RectTransform parent = indoorTokenLayer != null ? indoorTokenLayer : indoorRoot;
+        if (parent != null)
         {
-            SpawnToken(WhiteboxTokenType.Arrow, RegionID.Kitchen, indoorTokenLayer, "窗上火箭\n拖到炉膛", new Color(1f, 0.3f, 0.12f, 0.96f), new Vector2(0.34f, 0.64f));
+            SpawnToken(WhiteboxTokenType.Arrow, RegionID.Kitchen, parent, "战时火箭\n拖到炉膛", new Color(1f, 0.3f, 0.12f, 0.96f), new Vector2(0.34f, 0.64f));
         }
     }
 
@@ -1363,9 +1389,10 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
-        if (indoorTokenLayer != null)
+        RectTransform parent = indoorTokenLayer != null ? indoorTokenLayer : indoorRoot;
+        if (parent != null)
         {
-            SpawnToken(WhiteboxTokenType.Bread, RegionID.Cellar, indoorTokenLayer, "入口面包\n拖给女孩", new Color(0.92f, 0.52f, 0.18f, 0.96f), new Vector2(0.36f, 0.48f));
+            SpawnToken(WhiteboxTokenType.Bread, RegionID.Cellar, parent, "入口面包\n拖给女孩", new Color(0.92f, 0.52f, 0.18f, 0.96f), new Vector2(0.36f, 0.48f));
         }
     }
 
@@ -1623,9 +1650,9 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return false;
         }
 
-        if (regionTimes[RegionID.Kitchen] != TimeState.Spring)
+        if (regionTimes[RegionID.Kitchen] != TimeState.War)
         {
-            AddLog("取到战时火箭后，要把厨房切回春天才能安全点燃炉膛。");
+            AddLog("炉膛必须在厨房战时用火箭点燃。");
             return false;
         }
 
@@ -1758,6 +1785,20 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
 
         return null;
+    }
+
+    private void RemoveTokenOfType(WhiteboxTokenType tokenType)
+    {
+        for (int i = activeTokens.Count - 1; i >= 0; i--)
+        {
+            WhiteboxDraggableToken token = activeTokens[i];
+            if (token != null && token.TokenType == tokenType)
+            {
+                activeTokens.RemoveAt(i);
+                token.MarkConsumed();
+                Destroy(token.gameObject);
+            }
+        }
     }
 
     private void ConsumeToken(WhiteboxDraggableToken token)
@@ -2079,21 +2120,19 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             if (kitchen)
             {
-                indoorHint.text = rocketTriggered && !ovenLit
-                    ? "窗户上有燃烧火箭：把厨房切到春天后拖到炉膛点火。"
-                    : ovenLit ? "炉膛已点燃，会保持点燃状态。案板流程：面粉→清水→揉面→战时发酵→入烤箱。"
-                    : "等待火箭事件：磨坊春天、麦田战时、厨房战时。案板流程只在春天进行。";
+                indoorHint.text = GetKitchenIndoorHint(time);
             }
             else
             {
                 indoorHint.text = time == TimeState.War
-                    ? "战时地窖：小女孩出现。把热面包拖给她。"
+                    ? (girlFed ? "战时地窖：小女孩已经吃到面包。" : "战时地窖：小女孩出现。把热面包拖给她。")
                     : "先从春天进入地窖；进入后切到战时，小女孩才会出现。";
             }
         }
 
         SetActiveIfNotNull(indoorFireboxDropZone, kitchen);
         SetActiveIfNotNull(indoorCellarDropZone, !kitchen && time == TimeState.War);
+        RefreshIndoorMarkers(kitchen, time);
 
         SetButtonActive(indoorPlaceFlourButton, kitchen);
         SetButtonActive(indoorAddWaterButton, kitchen);
@@ -2114,12 +2153,213 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         if (kitchen)
         {
-            SpawnArrowInKitchenIfNeeded();
+            if (time == TimeState.War)
+            {
+                SpawnArrowInKitchenIfNeeded();
+            }
+            else
+            {
+                RemoveTokenOfType(WhiteboxTokenType.Arrow);
+            }
         }
         else
         {
+            RemoveTokenOfType(WhiteboxTokenType.Arrow);
             SpawnBreadInCellarIfNeeded();
         }
+    }
+
+
+    private void RefreshIndoorMarkers(bool kitchen, TimeState time)
+    {
+        RefreshKitchenProcessVisual(kitchen, time);
+        RefreshCellarGirlVisual(!kitchen && time == TimeState.War);
+    }
+
+    private void RefreshKitchenProcessVisual(bool visible, TimeState time)
+    {
+        if (!visible)
+        {
+            if (kitchenProcessVisual != null)
+            {
+                kitchenProcessVisual.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
+        EnsureRuntimeMarker(
+            ref kitchenProcessVisual,
+            ref kitchenProcessText,
+            "KitchenProcessMarker",
+            new Vector2(0.55f, 0.24f),
+            new Vector2(280f, 86f),
+            new Color(1f, 0.96f, 0.78f, 0.94f));
+
+        if (kitchenProcessVisual == null || kitchenProcessText == null)
+        {
+            return;
+        }
+
+        kitchenProcessVisual.gameObject.SetActive(true);
+        kitchenProcessVisual.SetAsLastSibling();
+        kitchenProcessText.text = GetKitchenProcessDisplay() + "\n下一步：" + GetKitchenNextAction(time);
+    }
+
+    private void RefreshCellarGirlVisual(bool visible)
+    {
+        if (!visible)
+        {
+            if (cellarGirlVisual != null)
+            {
+                cellarGirlVisual.gameObject.SetActive(false);
+            }
+
+            return;
+        }
+
+        EnsureRuntimeMarker(
+            ref cellarGirlVisual,
+            ref cellarGirlText,
+            "CellarGirlMarker",
+            new Vector2(0.64f, 0.55f),
+            new Vector2(128f, 82f),
+            girlFed ? new Color(1f, 0.68f, 0.34f, 0.94f) : new Color(0.72f, 0.78f, 0.92f, 0.94f));
+
+        if (cellarGirlVisual == null || cellarGirlText == null)
+        {
+            return;
+        }
+
+        Image image = cellarGirlVisual.GetComponent<Image>();
+        if (image != null)
+        {
+            image.color = girlFed ? new Color(1f, 0.68f, 0.34f, 0.94f) : new Color(0.72f, 0.78f, 0.92f, 0.94f);
+        }
+
+        cellarGirlVisual.gameObject.SetActive(true);
+        cellarGirlVisual.SetAsLastSibling();
+        cellarGirlText.text = girlFed ? "小女孩\n吃面包" : "小女孩\n发抖";
+    }
+
+    private void EnsureRuntimeMarker(ref RectTransform marker, ref Text label, string name, Vector2 position, Vector2 size, Color color)
+    {
+        if (marker != null && label != null)
+        {
+            return;
+        }
+
+        Transform parent = indoorTokenLayer != null ? indoorTokenLayer : indoorRoot;
+        if (parent == null)
+        {
+            return;
+        }
+
+        marker = CreatePanel(name, parent, color);
+        Image image = marker.GetComponent<Image>();
+        if (image != null)
+        {
+            image.raycastTarget = false;
+        }
+
+        Place(marker, position, size);
+        label = CreateText("Label", marker, "", 14, FontStyle.Bold, ink, TextAnchor.MiddleCenter);
+        Stretch(label.rectTransform, new Vector2(6f, 4f), new Vector2(-6f, -4f));
+    }
+
+    private string GetKitchenIndoorHint(TimeState time)
+    {
+        string fireHint;
+        if (ovenLit)
+        {
+            fireHint = "炉膛已点燃，会一直保持可烤状态。";
+        }
+        else if (rocketTriggered)
+        {
+            fireHint = time == TimeState.War ? "窗户上有火箭，现在可以拖到炉膛点火。" : "窗户上有火箭，把厨房切到战时后拖到炉膛点火。";
+        }
+        else
+        {
+            fireHint = "点火事件：厨房切到战时，火箭会钉到窗户，可直接点燃炉膛。";
+        }
+
+        return "时间：" + GetTimeName(time) + "。案板只在春天可用；生面团切到战时会发酵，切到秋天会发霉。\n" + fireHint;
+    }
+
+    private string GetKitchenProcessDisplay()
+    {
+        string oven = ovenLit ? "炉膛已点燃" : "炉膛未点燃";
+        return "当前：" + GetKitchenStatus() + " / " + oven;
+    }
+
+    private string GetKitchenNextAction(TimeState time)
+    {
+        if (kitchenProcess == KitchenProcessState.Empty || kitchenProcess == KitchenProcessState.DoughMolded)
+        {
+            if (flourAtKitchenDoor)
+            {
+                return time == TimeState.Spring ? "点“案板放面粉”" : "切回春天，再放面粉";
+            }
+
+            return "把面粉从小推车拖到厨房门口";
+        }
+
+        if (kitchenProcess == KitchenProcessState.FlourPlaced)
+        {
+            if (waterAtKitchenDoor)
+            {
+                return time == TimeState.Spring ? "点“加入清水”" : "切回春天，再加入清水";
+            }
+
+            return "去地窖秋天积水处取清水，再拖到厨房门口";
+        }
+
+        if (kitchenProcess == KitchenProcessState.WaterAdded)
+        {
+            return time == TimeState.Spring ? "点“揉成面团”" : "切回春天，再揉面";
+        }
+
+        if (kitchenProcess == KitchenProcessState.DoughMixed)
+        {
+            return time == TimeState.War ? "等待发酵完成" : "把厨房切到战时，让生面团发酵";
+        }
+
+        if (kitchenProcess == KitchenProcessState.DoughFermented)
+        {
+            return "点“放入烤箱”";
+        }
+
+        if (kitchenProcess == KitchenProcessState.DoughInOven)
+        {
+            if (ovenLit)
+            {
+                return "等待烘烤开始";
+            }
+
+            if (rocketTriggered)
+            {
+                return time == TimeState.War ? "把火箭拖到炉膛点火" : "切到战时，把火箭拖到炉膛点火";
+            }
+
+            return "把厨房切到战时，拖火箭点燃炉膛";
+        }
+
+        if (kitchenProcess == KitchenProcessState.Baking)
+        {
+            return "等待面包出炉";
+        }
+
+        if (kitchenProcess == KitchenProcessState.BreadReady)
+        {
+            return "点“面包移到门口”";
+        }
+
+        if (kitchenProcess == KitchenProcessState.BreadAtDoor)
+        {
+            return "退出厨房，把门口面包拖到小推车";
+        }
+
+        return "继续按提示操作";
     }
 
 
@@ -2253,14 +2493,14 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         if (region == RegionID.Field)
         {
             if (time == TimeState.Spring) return "春天：道路可通，先把车推到麦田点。";
-            if (time == TimeState.War) return "战时：火箭来源，配合磨坊春天和厨房战时触发。";
+            if (time == TimeState.War) return "战时：道路危险，小推车无法跨格通过。";
             return "秋天：麦子成熟，但车不能再移动。";
         }
 
         if (region == RegionID.Kitchen)
         {
-            if (ovenLit) return "炉火已点燃，等待面包出炉。";
-            if (time == TimeState.War) return "战时：火箭可钉在窗框上。";
+            if (ovenLit) return "炉火已点燃，可以提前完成，等待面团入炉或面包出炉。";
+            if (time == TimeState.War) return "战时：火箭可钉在窗框上，进入厨房即可点炉。";
             return "厨房：进入内部后卸面粉、卸清水、揉面入炉。";
         }
 
@@ -2553,4 +2793,3 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
         ((RectTransform)transform).anchoredPosition = startAnchoredPosition;
     }
 }
-
