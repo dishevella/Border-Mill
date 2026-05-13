@@ -239,82 +239,82 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::BorderMillWhiteboxController
   root: {fileID: 482038320}
-  sceneBoard: {fileID: 0}
-  boardOverlay: {fileID: 0}
-  dragLayer: {fileID: 0}
+  sceneBoard: {fileID: 585871012}
+  boardOverlay: {fileID: 1034492230}
+  dragLayer: {fileID: 34919691}
   millRegion:
-    Root: {fileID: 0}
-    TimeOverlay: {fileID: 0}
-    Title: {fileID: 0}
-    State: {fileID: 0}
-    Hint: {fileID: 0}
-    TokenLayer: {fileID: 0}
-    TimeSlider: {fileID: 0}
-    TimeSliderLabel: {fileID: 0}
+    Root: {fileID: 1703969393}
+    TimeOverlay: {fileID: 187796847}
+    Title: {fileID: 1068764464}
+    State: {fileID: 1326640739}
+    Hint: {fileID: 1249346793}
+    TokenLayer: {fileID: 114070207}
+    TimeSlider: {fileID: 960605701}
+    TimeSliderLabel: {fileID: 1876769447}
   fieldRegion:
-    Root: {fileID: 0}
-    TimeOverlay: {fileID: 0}
-    Title: {fileID: 0}
-    State: {fileID: 0}
-    Hint: {fileID: 0}
-    TokenLayer: {fileID: 0}
-    TimeSlider: {fileID: 0}
-    TimeSliderLabel: {fileID: 0}
+    Root: {fileID: 1856477689}
+    TimeOverlay: {fileID: 1368706681}
+    Title: {fileID: 255355363}
+    State: {fileID: 904637705}
+    Hint: {fileID: 49193914}
+    TokenLayer: {fileID: 1805324531}
+    TimeSlider: {fileID: 1158904871}
+    TimeSliderLabel: {fileID: 361263960}
   kitchenRegion:
-    Root: {fileID: 0}
-    TimeOverlay: {fileID: 0}
-    Title: {fileID: 0}
-    State: {fileID: 0}
-    Hint: {fileID: 0}
-    TokenLayer: {fileID: 0}
-    TimeSlider: {fileID: 0}
-    TimeSliderLabel: {fileID: 0}
+    Root: {fileID: 776530572}
+    TimeOverlay: {fileID: 407765693}
+    Title: {fileID: 2142377541}
+    State: {fileID: 990849091}
+    Hint: {fileID: 705673943}
+    TokenLayer: {fileID: 1428216341}
+    TimeSlider: {fileID: 404746384}
+    TimeSliderLabel: {fileID: 618534548}
   cellarRegion:
-    Root: {fileID: 0}
-    TimeOverlay: {fileID: 0}
-    Title: {fileID: 0}
-    State: {fileID: 0}
-    Hint: {fileID: 0}
-    TokenLayer: {fileID: 0}
-    TimeSlider: {fileID: 0}
-    TimeSliderLabel: {fileID: 0}
-  millRoadButton: {fileID: 0}
-  millStoneButton: {fileID: 0}
-  fieldRoadButton: {fileID: 0}
-  fieldHarvestNodeButton: {fileID: 0}
-  kitchenDoorNodeButton: {fileID: 0}
-  cellarWellButton: {fileID: 0}
-  cellarDoorButton: {fileID: 0}
-  harvestWheatButton: {fileID: 0}
-  openKitchenButton: {fileID: 0}
-  collectWaterButton: {fileID: 0}
-  openCellarButton: {fileID: 0}
-  kitchenDoorDropZoneRect: {fileID: 0}
-  cellarEntranceDropZoneRect: {fileID: 0}
-  cartVisual: {fileID: 0}
-  cartImage: {fileID: 0}
-  cartText: {fileID: 0}
-  indoorRoot: {fileID: 0}
-  indoorBackground: {fileID: 0}
-  indoorTitle: {fileID: 0}
-  indoorHint: {fileID: 0}
-  indoorTimeSlider: {fileID: 0}
-  indoorTimeSliderLabel: {fileID: 0}
-  indoorTokenLayer: {fileID: 0}
-  closeIndoorButton: {fileID: 0}
-  indoorPlaceFlourButton: {fileID: 0}
-  indoorAddWaterButton: {fileID: 0}
-  indoorKneadDoughButton: {fileID: 0}
-  indoorLoadOvenButton: {fileID: 0}
-  indoorMoveBreadToDoorButton: {fileID: 0}
-  indoorTakeBreadButton: {fileID: 0}
-  indoorFireboxDropZoneRect: {fileID: 0}
-  indoorCellarDropZoneRect: {fileID: 0}
+    Root: {fileID: 1765982816}
+    TimeOverlay: {fileID: 685393135}
+    Title: {fileID: 866942208}
+    State: {fileID: 492925236}
+    Hint: {fileID: 705673943}
+    TokenLayer: {fileID: 1428216341}
+    TimeSlider: {fileID: 405830583}
+    TimeSliderLabel: {fileID: 1432878100}
+  millRoadButton: {fileID: 608218971}
+  millStoneButton: {fileID: 1638318009}
+  fieldRoadButton: {fileID: 1074338298}
+  fieldHarvestNodeButton: {fileID: 49243940}
+  kitchenDoorNodeButton: {fileID: 1782961698}
+  cellarWellButton: {fileID: 1513764001}
+  cellarDoorButton: {fileID: 179016167}
+  harvestWheatButton: {fileID: 61374952}
+  openKitchenButton: {fileID: 799477283}
+  collectWaterButton: {fileID: 1990898768}
+  openCellarButton: {fileID: 232428448}
+  kitchenDoorDropZoneRect: {fileID: 1478103053}
+  cellarEntranceDropZoneRect: {fileID: 553196186}
+  cartVisual: {fileID: 981791983}
+  cartImage: {fileID: 981791985}
+  cartText: {fileID: 699177438}
+  indoorRoot: {fileID: 846367437}
+  indoorBackground: {fileID: 511296019}
+  indoorTitle: {fileID: 1707714378}
+  indoorHint: {fileID: 435678119}
+  indoorTimeSlider: {fileID: 911848004}
+  indoorTimeSliderLabel: {fileID: 393057691}
+  indoorTokenLayer: {fileID: 2120122490}
+  closeIndoorButton: {fileID: 142670217}
+  indoorPlaceFlourButton: {fileID: 1687514626}
+  indoorAddWaterButton: {fileID: 1147915509}
+  indoorKneadDoughButton: {fileID: 1390641156}
+  indoorLoadOvenButton: {fileID: 1612429237}
+  indoorMoveBreadToDoorButton: {fileID: 1051197010}
+  indoorTakeBreadButton: {fileID: 412426253}
+  indoorFireboxDropZoneRect: {fileID: 551850263}
+  indoorCellarDropZoneRect: {fileID: 98191840}
   statusText: {fileID: 0}
   checklistText: {fileID: 0}
   logText: {fileID: 0}
-  finalOverlay: {fileID: 0}
-  finalText: {fileID: 0}
+  finalOverlay: {fileID: 942837602}
+  finalText: {fileID: 1995873508}
 --- !u!1 &34058604
 GameObject:
   m_ObjectHideFlags: 0
@@ -1830,6 +1830,7 @@ RectTransform:
   m_Children:
   - {fileID: 911848003}
   - {fileID: 393057690}
+  - {fileID: 551850263}
   m_Father: {fileID: 846367437}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.62, y: 0.88}
@@ -3386,8 +3387,8 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 1388313854}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMin: {x: 0.5, y: 0}
+  m_AnchorMax: {x: 0.5, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 18, y: 18}
   m_Pivot: {x: 0.5, y: 0.5}
@@ -5297,17 +5298,17 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 551850262}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1867388818}
-  m_Father: {fileID: 846367437}
+  m_Father: {fileID: 147102847}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.72, y: 0.32}
   m_AnchorMax: {x: 0.72, y: 0.32}
-  m_AnchoredPosition: {x: 0, y: 0}
+  m_AnchoredPosition: {x: -59.754272, y: -478.03394}
   m_SizeDelta: {x: 140, y: 72}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &551850264
@@ -8071,7 +8072,6 @@ RectTransform:
   - {fileID: 435678118}
   - {fileID: 147102847}
   - {fileID: 142670216}
-  - {fileID: 551850263}
   - {fileID: 98191840}
   - {fileID: 1687514625}
   - {fileID: 1147915508}
@@ -11082,7 +11082,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &1251873967
 RectTransform:
   m_ObjectHideFlags: 0
@@ -13662,7 +13662,7 @@ RectTransform:
   m_Father: {fileID: 642182296}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMax: {x: 0.5, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 0.5}
