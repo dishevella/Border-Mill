@@ -105,6 +105,11 @@ public class PreludeManager : MonoBehaviour
     public float timelineMiddlePauseTime = 0.5f;
     public float timelineEndPauseTime = 0.4f;
 
+    [Header("Story Girl Images")]
+    public Image warGirlImage;      // 战时中间的小女孩
+    public Image autumnGirlImage;   // 秋天状态的小女孩
+
+    public float girlFadeTime = 0.8f;
     [Header("Frame Animation - Windmill")]
     public Image windmillImage;
     public Sprite[] windmillFrames;
@@ -119,13 +124,14 @@ public class PreludeManager : MonoBehaviour
     public Vector3 rocketStartScale = new Vector3(0.45f, 0.45f, 1f);
     public Vector3 rocketEndScale = new Vector3(1.15f, 1.15f, 1f);
 
-    [Header("Frame Animation - Rain")]
+    [Header("Rain Animator")]
     public Image rainImage;
-    public Sprite[] rainFrames;
-    public float rainFps = 10f;
+    public Animator rainAnimator;
+
+    [Header("Rocket Rotation")]
+    public float rocketRotationOffset = 135f;
 
     private Coroutine windmillAnimCoroutine;
-    private Coroutine rainAnimCoroutine;
     private Coroutine[] rocketAnimCoroutines;
 
     private int currentIndex = 0;
@@ -156,10 +162,57 @@ public class PreludeManager : MonoBehaviour
         InitTimeline();
         InitCenterClickArea();
         InitFrameAnimations();
-
+        InitStoryGirlImages();
 
         phase = PreludePhase.SpringClick;
         ShowPulseAt(quarters[currentIndex]);
+    }
+
+    void InitStoryGirlImages()
+    {
+        if (warGirlImage != null)
+        {
+            warGirlImage.gameObject.SetActive(true);
+            warGirlImage.raycastTarget = false;
+            SetImageAlpha(warGirlImage, 0f);
+            warGirlImage.transform.SetAsLastSibling();
+        }
+
+        if (autumnGirlImage != null)
+        {
+            autumnGirlImage.gameObject.SetActive(true);
+            autumnGirlImage.raycastTarget = false;
+            SetImageAlpha(autumnGirlImage, 0f);
+            autumnGirlImage.transform.SetAsLastSibling();
+        }
+    }
+
+    IEnumerator FadeImageAlpha(Image img, float from, float to, float duration)
+    {
+        if (img == null)
+        {
+            yield break;
+        }
+
+        float timer = 0f;
+
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+
+            float t = timer / duration;
+            t = Mathf.SmoothStep(0f, 1f, t);
+
+            Color c = img.color;
+            c.a = Mathf.Lerp(from, to, t);
+            img.color = c;
+
+            yield return null;
+        }
+
+        Color finalColor = img.color;
+        finalColor.a = to;
+        img.color = finalColor;
     }
 
     void InitQuarters()
@@ -464,7 +517,9 @@ public class PreludeManager : MonoBehaviour
 
         Vector2 direction = end - start;
         float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
-        rocket.localRotation = Quaternion.Euler(0f, 0f, angle);
+
+        // 因为你的火箭图片原本不是朝右，而是朝左下，所以需要加一个角度修正
+        rocket.localRotation = Quaternion.Euler(0f, 0f, angle + rocketRotationOffset);
 
         int rocketIndex = System.Array.IndexOf(rockets, rocket);
 
@@ -518,6 +573,11 @@ public class PreludeManager : MonoBehaviour
     IEnumerator RevealWarByRocketPath()
     {
         yield return new WaitForSeconds(rocketFlyTime * warRevealStartRatio);
+
+        SetImageAlpha(warGirlImage, 0f);
+        SetImageAlpha(autumnGirlImage, 0f);
+        StartCoroutine(FadeImageAlpha(warGirlImage, 0f, 1f, girlFadeTime));
+
 
 
         int[] revealOrder =
@@ -630,12 +690,15 @@ public class PreludeManager : MonoBehaviour
 
             yield return StartCoroutine(FadeInAllAutumnOverlays(autumnFinalFadeTime));
 
-            
 
             ChangeAmbience(autumnClip, autumnVolume);
             ChangeMusic(sadClip, sadVolume);
 
-            yield return StartCoroutine(PlayRainForSeconds(afterAutumnRainTime));
+            StartRainAnimator();
+
+            yield return new WaitForSeconds(afterAutumnRainTime);
+
+            StopRainAnimator();
 
             yield return StartCoroutine(TimeRewindSequence());
         }
@@ -666,14 +729,7 @@ public class PreludeManager : MonoBehaviour
             float t = timer / duration;
             t = Mathf.SmoothStep(0f, 1f, t);
 
-            for (int i = 0; i < autumnOverlayImages.Length; i++)
-            {
-                if (autumnOverlayImages[i] == null) continue;
-
-                Color c = autumnOverlayImages[i].color;
-                c.a = Mathf.Lerp(c.a, 1f, t);
-                autumnOverlayImages[i].color = c;
-            }
+            SetAllAutumnAlpha(t);
 
             yield return null;
         }
@@ -722,6 +778,12 @@ public class PreludeManager : MonoBehaviour
             c.a = alpha;
             autumnOverlayImages[i].color = c;
         }
+
+        // 秋天出现时，秋天小女孩出现
+        SetImageAlpha(autumnGirlImage, alpha);
+
+        // 秋天退回战争时，战时小女孩回来
+        SetImageAlpha(warGirlImage, 1f - alpha);
     }
 
     IEnumerator TimeRewindSequence()
@@ -775,6 +837,7 @@ public class PreludeManager : MonoBehaviour
         }
 
         ShowSpringWorldImmediate();
+        StartWindmillAnimation();
 
         StopMusicWithFade();
         ChangeAmbience(springClip, springVolume);
@@ -852,6 +915,9 @@ public class PreludeManager : MonoBehaviour
         {
             SetImageAlpha(autumnOverlayImages[i], 0f);
         }
+
+        SetImageAlpha(warGirlImage, 1f);
+        SetImageAlpha(autumnGirlImage, 0f);
     }
 
     void ShowSpringWorldImmediate()
@@ -870,6 +936,9 @@ public class PreludeManager : MonoBehaviour
         {
             SetImageAlpha(autumnOverlayImages[i], 0f);
         }
+
+        SetImageAlpha(warGirlImage, 0f);
+        SetImageAlpha(autumnGirlImage, 0f);
     }
 
     void SetImageAlpha(Image img, float alpha)
@@ -1151,15 +1220,13 @@ public class PreludeManager : MonoBehaviour
 
         if (rainImage != null)
         {
-            rainImage.gameObject.SetActive(true);
+            rainImage.gameObject.SetActive(false);
             rainImage.raycastTarget = false;
+        }
 
-            if (rainFrames != null && rainFrames.Length > 0 && rainFrames[0] != null)
-            {
-                rainImage.sprite = rainFrames[0];
-            }
-
-            SetImageAlpha(rainImage, 0f);
+        if (rainAnimator != null)
+        {
+            rainAnimator.enabled = false;
         }
 
         rocketAnimCoroutines = new Coroutine[rockets.Length];
@@ -1238,118 +1305,35 @@ public class PreludeManager : MonoBehaviour
         }
     }
 
-    void StartRainAnimation()
+    void StartRainAnimator()
     {
-        if (rainImage == null || rainFrames == null || rainFrames.Length == 0) return;
-
-        if (rainAnimCoroutine != null)
+        if (rainImage != null)
         {
-            StopCoroutine(rainAnimCoroutine);
-            rainAnimCoroutine = null;
+            rainImage.gameObject.SetActive(true);
+            rainImage.raycastTarget = false;
+            SetImageAlpha(rainImage, 1f);
+            rainImage.transform.SetAsLastSibling();
         }
 
-        rainImage.gameObject.SetActive(true);
-        SetImageAlpha(rainImage, 1f);
-
-        rainAnimCoroutine = StartCoroutine(PlayRainAnimation());
+        if (rainAnimator != null)
+        {
+            rainAnimator.enabled = true;
+            rainAnimator.Play(0, 0, 0f);
+        }
     }
 
-    void StopRainAnimation()
+    void StopRainAnimator()
     {
-        if (rainAnimCoroutine != null)
+        if (rainAnimator != null)
         {
-            StopCoroutine(rainAnimCoroutine);
-            rainAnimCoroutine = null;
+            rainAnimator.enabled = false;
         }
 
         if (rainImage != null)
         {
             SetImageAlpha(rainImage, 0f);
+            rainImage.gameObject.SetActive(false);
         }
-    }
-
-    IEnumerator PlayRainAnimation()
-    {
-        if (rainImage == null || rainFrames == null || rainFrames.Length == 0)
-        {
-            yield break;
-        }
-
-        float frameTime = 1f / rainFps;
-        int index = 0;
-
-        while (true)
-        {
-            if (rainFrames[index] != null)
-            {
-                rainImage.sprite = rainFrames[index];
-            }
-
-            SetImageAlpha(rainImage, 1f);
-
-            yield return new WaitForSeconds(frameTime);
-
-            index++;
-
-            if (index >= rainFrames.Length)
-            {
-                index = 0;
-            }
-        }
-    }
-
-    IEnumerator PlayRainForSeconds(float duration)
-    {
-        if (rainImage == null || rainFrames == null || rainFrames.Length == 0)
-        {
-            yield break;
-        }
-
-        float safeFps = Mathf.Max(1f, rainFps);
-        float frameTime = 1f / safeFps;
-
-        int frameIndex = 0;
-        float frameTimer = 0f;
-        float totalTimer = 0f;
-
-        // 先准备第一帧，避免打开物体时显示旧图
-        if (rainFrames[0] != null)
-        {
-            rainImage.sprite = rainFrames[0];
-        }
-
-        rainImage.gameObject.SetActive(true);
-        rainImage.raycastTarget = false;
-        rainImage.transform.SetAsLastSibling();
-        SetImageAlpha(rainImage, 1f);
-
-        while (totalTimer < duration)
-        {
-            totalTimer += Time.deltaTime;
-            frameTimer += Time.deltaTime;
-
-            if (frameTimer >= frameTime)
-            {
-                frameTimer -= frameTime;
-
-                frameIndex++;
-
-                if (frameIndex >= rainFrames.Length)
-                {
-                    frameIndex = 0;
-                }
-
-                if (rainFrames[frameIndex] != null)
-                {
-                    rainImage.sprite = rainFrames[frameIndex];
-                }
-            }
-
-            yield return null;
-        }
-
-        SetImageAlpha(rainImage, 0f);
-        rainImage.gameObject.SetActive(false);
     }
 
 
