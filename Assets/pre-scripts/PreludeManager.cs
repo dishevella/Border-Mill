@@ -52,7 +52,45 @@ public class PreludeManager : MonoBehaviour
     public float autumnFlashFadeTime = 0.18f;
     public float autumnFlashHoldTime = 0.18f;
     public float autumnFinalFadeTime = 0.7f;
-    public float autumnBetweenDelay = 0.25f;
+    public float afterAutumnRainTime = 2.5f;
+    
+    [Header("Audio Sources")]
+    public AudioSource ambienceSource; // 用来播放春天/战争/秋天环境音
+    public AudioSource musicSource;    // 用来播放悲伤/悲壮音乐
+
+    [Header("Special SFX Sources")]
+    public AudioSource arrowSource;
+    public AudioSource glassBreakSource;
+
+    [Header("Audio Clips")]
+    public AudioClip springClip;
+    public AudioClip warClip;
+    public AudioClip autumnClip;
+    public AudioClip sadClip;
+
+    [Header("Special SFX Clips")]
+    public AudioClip arrowClip;
+    public AudioClip glassBreakClip;
+
+
+    [Header("Audio Volume")]
+    [Range(0f, 1f)] public float springVolume = 0.7f;
+    [Range(0f, 1f)] public float warVolume = 0.8f;
+    [Range(0f, 1f)] public float autumnVolume = 0.65f;
+    [Range(0f, 1f)] public float sadVolume = 0.75f;
+    [Range(0f, 1f)] public float sadTimelineVolume = 0.25f;
+
+    [Header("Special SFX Settings")]
+    [Range(0f, 1f)] public float arrowVolume = 0.8f;
+    [Range(0.1f, 3f)] public float arrowPitch = 1f;
+
+    [Range(0f, 1f)] public float glassBreakVolume = 1f;
+    [Range(0.1f, 3f)] public float glassBreakPitch = 1f;
+
+    public float audioFadeTime = 0.8f;
+
+    private Coroutine ambienceAudioCoroutine;
+    private Coroutine musicAudioCoroutine;
 
     [Header("Timeline")]
     public GameObject timelinePanel;
@@ -67,11 +105,36 @@ public class PreludeManager : MonoBehaviour
     public float timelineMiddlePauseTime = 0.5f;
     public float timelineEndPauseTime = 0.4f;
 
+    [Header("Frame Animation - Windmill")]
+    public Image windmillImage;
+    public Sprite[] windmillFrames;
+    public float windmillFps = 8f;
+
+    [Header("Frame Animation - Rockets")]
+    public Image[] rocketImages;
+    public Sprite[] rocketFrames;
+    public float rocketFps = 12f;
+
+    [Header("Rocket Scale")]
+    public Vector3 rocketStartScale = new Vector3(0.45f, 0.45f, 1f);
+    public Vector3 rocketEndScale = new Vector3(1.15f, 1.15f, 1f);
+
+    [Header("Frame Animation - Rain")]
+    public Image rainImage;
+    public Sprite[] rainFrames;
+    public float rainFps = 10f;
+
+    private Coroutine windmillAnimCoroutine;
+    private Coroutine rainAnimCoroutine;
+    private Coroutine[] rocketAnimCoroutines;
+
     private int currentIndex = 0;
     private int autumnClickCount = 0;
 
     private Coroutine pulseCoroutine;
     private bool inputLocked = false;
+    private bool arrowPlayed = false;
+    private bool glassBreakPlayed = false;
 
     private enum PreludePhase
     {
@@ -92,6 +155,8 @@ public class PreludeManager : MonoBehaviour
         InitRockets();
         InitTimeline();
         InitCenterClickArea();
+        InitFrameAnimations();
+
 
         phase = PreludePhase.SpringClick;
         ShowPulseAt(quarters[currentIndex]);
@@ -259,6 +324,14 @@ public class PreludeManager : MonoBehaviour
         inputLocked = true;
         HidePulse();
 
+        // 第一次点击第一张春天图时，开始播放春天环境音
+        if (index == 0)
+        {
+            ChangeAmbience(springClip, springVolume);
+            StartWindmillAnimation();
+        }
+
+
         yield return StartCoroutine(FadeInSpringImage(index));
 
         currentIndex++;
@@ -331,6 +404,10 @@ public class PreludeManager : MonoBehaviour
 
         yield return new WaitForSeconds(afterSpringPauseTime);
 
+        StopWindmillAnimation();
+
+        ChangeAmbience(warClip, warVolume);
+
         yield return StartCoroutine(PlayRocketWarSequence());
 
         yield return new WaitForSeconds(afterWarPauseTime);
@@ -340,6 +417,9 @@ public class PreludeManager : MonoBehaviour
 
     IEnumerator PlayRocketWarSequence()
     {
+        arrowPlayed = false;
+        glassBreakPlayed = false;
+
         Coroutine rocketRoutine = StartCoroutine(LaunchRocketsSequence());
         Coroutine warRoutine = StartCoroutine(RevealWarByRocketPath());
 
@@ -349,10 +429,12 @@ public class PreludeManager : MonoBehaviour
 
     IEnumerator LaunchRocketsSequence()
     {
+        PlayArrowSfxOnce();
         for (int i = 0; i < rockets.Length; i++)
         {
             if (i < rocketStartPoints.Length)
             {
+                
                 StartCoroutine(FlyOneRocket(rockets[i], rocketStartPoints[i], rocketEndPoint));
             }
 
@@ -378,10 +460,25 @@ public class PreludeManager : MonoBehaviour
         Vector2 end = endPoint.anchoredPosition;
 
         rocket.anchoredPosition = start;
+        rocket.localScale = rocketStartScale;
 
         Vector2 direction = end - start;
         float angle = Mathf.Atan2(direction.y, direction.x) * Mathf.Rad2Deg;
         rocket.localRotation = Quaternion.Euler(0f, 0f, angle);
+
+        int rocketIndex = System.Array.IndexOf(rockets, rocket);
+
+        if (rocketIndex >= 0 && rocketIndex < rocketImages.Length && rocketImages[rocketIndex] != null)
+        {
+            if (rocketAnimCoroutines[rocketIndex] != null)
+            {
+                StopCoroutine(rocketAnimCoroutines[rocketIndex]);
+            }
+
+            rocketAnimCoroutines[rocketIndex] = StartCoroutine(
+                PlayFrameAnimation(rocketImages[rocketIndex], rocketFrames, rocketFps, true)
+            );
+        }
 
         float timer = 0f;
 
@@ -394,19 +491,34 @@ public class PreludeManager : MonoBehaviour
 
             rocket.anchoredPosition = Vector2.Lerp(start, end, t);
 
+            // 近大远小：飞行过程中慢慢变大
+            rocket.localScale = Vector3.Lerp(rocketStartScale, rocketEndScale, t);
+
             yield return null;
         }
 
         rocket.anchoredPosition = end;
+        rocket.localScale = rocketEndScale;
+
+        PlayGlassBreakSfxOnce();
 
         yield return new WaitForSeconds(0.15f);
 
+        if (rocketIndex >= 0 && rocketIndex < rocketAnimCoroutines.Length)
+        {
+            if (rocketAnimCoroutines[rocketIndex] != null)
+            {
+                StopCoroutine(rocketAnimCoroutines[rocketIndex]);
+                rocketAnimCoroutines[rocketIndex] = null;
+            }
+        }
+
         rocket.gameObject.SetActive(false);
     }
-
     IEnumerator RevealWarByRocketPath()
     {
         yield return new WaitForSeconds(rocketFlyTime * warRevealStartRatio);
+
 
         int[] revealOrder =
         {
@@ -518,93 +630,18 @@ public class PreludeManager : MonoBehaviour
 
             yield return StartCoroutine(FadeInAllAutumnOverlays(autumnFinalFadeTime));
 
-            yield return new WaitForSeconds(0.45f);
+            
+
+            ChangeAmbience(autumnClip, autumnVolume);
+            ChangeMusic(sadClip, sadVolume);
+
+            yield return StartCoroutine(PlayRainForSeconds(afterAutumnRainTime));
 
             yield return StartCoroutine(TimeRewindSequence());
         }
     }
 
-    IEnumerator FlashAutumnOverlay(int index)
-    {
-        if (index >= autumnOverlayImages.Length || autumnOverlayImages[index] == null)
-        {
-            yield break;
-        }
-
-        Image img = autumnOverlayImages[index];
-        PrepareAutumnImage(index);
-
-        float timer = 0f;
-
-        // 秋天出现
-        while (timer < autumnFlashFadeTime)
-        {
-            timer += Time.deltaTime;
-
-            float t = timer / autumnFlashFadeTime;
-
-            Color c = img.color;
-            c.a = Mathf.SmoothStep(0f, 1f, t);
-            img.color = c;
-
-            yield return null;
-        }
-
-        yield return new WaitForSeconds(autumnFlashHoldTime);
-
-        timer = 0f;
-
-        // 秋天退回去，露出下面的战争状态
-        while (timer < autumnFlashFadeTime)
-        {
-            timer += Time.deltaTime;
-
-            float t = timer / autumnFlashFadeTime;
-
-            Color c = img.color;
-            c.a = Mathf.SmoothStep(1f, 0f, t);
-            img.color = c;
-
-            yield return null;
-        }
-
-        Color finalColor = img.color;
-        finalColor.a = 0f;
-        img.color = finalColor;
-    }
-
-    IEnumerator FadeInAutumnOverlay(int index, float duration)
-    {
-        if (index >= autumnOverlayImages.Length || autumnOverlayImages[index] == null)
-        {
-            yield break;
-        }
-
-        Image img = autumnOverlayImages[index];
-        PrepareAutumnImage(index);
-
-        float startAlpha = img.color.a;
-        float timer = 0f;
-
-        while (timer < duration)
-        {
-            timer += Time.deltaTime;
-
-            float t = timer / duration;
-            t = Mathf.SmoothStep(0f, 1f, t);
-
-            Color c = img.color;
-            c.a = Mathf.Lerp(startAlpha, 1f, t);
-            img.color = c;
-
-            yield return null;
-        }
-
-        Color finalColor = img.color;
-        finalColor.a = 1f;
-        img.color = finalColor;
-    }
-
+   
     IEnumerator FlashAllAutumnOverlays()
     {
         PrepareAllAutumnImages();
@@ -694,6 +731,13 @@ public class PreludeManager : MonoBehaviour
         HidePulse();
         SetAllButtons(false);
 
+
+        // 开始拉时间轴：秋天环境音停止
+        StopAmbienceWithFade();
+
+        // 悲伤音乐不要直接停，而是慢慢变弱
+        FadeMusicVolume(sadTimelineVolume, timelineMoveTime * 2f);
+
         if (timelinePanel != null)
         {
             timelinePanel.SetActive(true);
@@ -731,6 +775,10 @@ public class PreludeManager : MonoBehaviour
         }
 
         ShowSpringWorldImmediate();
+
+        StopMusicWithFade();
+        ChangeAmbience(springClip, springVolume);
+
 
         yield return new WaitForSeconds(timelineEndPauseTime);
 
@@ -916,4 +964,393 @@ public class PreludeManager : MonoBehaviour
             yield return null;
         }
     }
+
+    
+
+    void ChangeAmbience(AudioClip clip, float targetVolume)
+    {
+        if (ambienceSource == null || clip == null) return;
+
+        if (ambienceAudioCoroutine != null)
+        {
+            StopCoroutine(ambienceAudioCoroutine);
+        }
+
+        ambienceAudioCoroutine = StartCoroutine(ChangeLoopAudioRoutine(
+            ambienceSource,
+            clip,
+            targetVolume,
+            audioFadeTime
+        ));
+    }
+
+    void ChangeMusic(AudioClip clip, float targetVolume)
+    {
+        if (musicSource == null || clip == null) return;
+
+        if (musicAudioCoroutine != null)
+        {
+            StopCoroutine(musicAudioCoroutine);
+        }
+
+        musicAudioCoroutine = StartCoroutine(ChangeLoopAudioRoutine(
+            musicSource,
+            clip,
+            targetVolume,
+            audioFadeTime
+        ));
+    }
+
+    void FadeMusicVolume(float targetVolume, float duration)
+    {
+        if (musicSource == null) return;
+
+        if (musicAudioCoroutine != null)
+        {
+            StopCoroutine(musicAudioCoroutine);
+        }
+
+        musicAudioCoroutine = StartCoroutine(FadeAudioVolumeRoutine(
+            musicSource,
+            targetVolume,
+            duration
+        ));
+    }
+
+    void StopAmbienceWithFade()
+    {
+        if (ambienceSource == null) return;
+
+        if (ambienceAudioCoroutine != null)
+        {
+            StopCoroutine(ambienceAudioCoroutine);
+        }
+
+        ambienceAudioCoroutine = StartCoroutine(StopAudioWithFadeRoutine(
+            ambienceSource,
+            audioFadeTime
+        ));
+    }
+
+    void StopMusicWithFade()
+    {
+        if (musicSource == null) return;
+
+        if (musicAudioCoroutine != null)
+        {
+            StopCoroutine(musicAudioCoroutine);
+        }
+
+        musicAudioCoroutine = StartCoroutine(StopAudioWithFadeRoutine(
+            musicSource,
+            audioFadeTime
+        ));
+    }
+
+    IEnumerator ChangeLoopAudioRoutine(AudioSource source, AudioClip newClip, float targetVolume, float duration)
+    {
+        if (source == null || newClip == null)
+        {
+            yield break;
+        }
+
+        if (source.isPlaying && source.clip == newClip)
+        {
+            yield return StartCoroutine(FadeAudioVolumeRoutine(source, targetVolume, duration));
+            yield break;
+        }
+
+        if (source.isPlaying)
+        {
+            yield return StartCoroutine(FadeAudioVolumeRoutine(source, 0f, duration * 0.5f));
+            source.Stop();
+        }
+
+        source.clip = newClip;
+        source.loop = true;
+        source.volume = 0f;
+        source.Play();
+
+        yield return StartCoroutine(FadeAudioVolumeRoutine(source, targetVolume, duration * 0.5f));
+    }
+
+    IEnumerator FadeAudioVolumeRoutine(AudioSource source, float targetVolume, float duration)
+    {
+        if (source == null)
+        {
+            yield break;
+        }
+
+        float startVolume = source.volume;
+        float timer = 0f;
+
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+
+            float t = timer / duration;
+            t = Mathf.SmoothStep(0f, 1f, t);
+
+            source.volume = Mathf.Lerp(startVolume, targetVolume, t);
+
+            yield return null;
+        }
+
+        source.volume = targetVolume;
+    }
+
+    IEnumerator StopAudioWithFadeRoutine(AudioSource source, float duration)
+    {
+        if (source == null)
+        {
+            yield break;
+        }
+
+        yield return StartCoroutine(FadeAudioVolumeRoutine(source, 0f, duration));
+
+        source.Stop();
+    }
+
+    void PlayArrowSfxOnce()
+    {
+        if (arrowPlayed) return;
+        if (arrowSource == null || arrowClip == null) return;
+
+        arrowPlayed = true;
+
+        arrowSource.Stop();
+        arrowSource.clip = arrowClip;
+        arrowSource.loop = false;
+        arrowSource.volume = arrowVolume;
+        arrowSource.pitch = arrowPitch;
+        arrowSource.Play();
+    }
+
+    void PlayGlassBreakSfxOnce()
+    {
+        if (glassBreakPlayed) return;
+        if (glassBreakSource == null || glassBreakClip == null) return;
+
+        glassBreakPlayed = true;
+
+        glassBreakSource.Stop();
+        glassBreakSource.clip = glassBreakClip;
+        glassBreakSource.loop = false;
+        glassBreakSource.volume = glassBreakVolume;
+        glassBreakSource.pitch = glassBreakPitch;
+        glassBreakSource.Play();
+    }
+
+    void InitFrameAnimations()
+    {
+        if (windmillImage != null)
+        {
+            windmillImage.gameObject.SetActive(false);
+            windmillImage.raycastTarget = false;
+        }
+
+        if (rainImage != null)
+        {
+            rainImage.gameObject.SetActive(true);
+            rainImage.raycastTarget = false;
+
+            if (rainFrames != null && rainFrames.Length > 0 && rainFrames[0] != null)
+            {
+                rainImage.sprite = rainFrames[0];
+            }
+
+            SetImageAlpha(rainImage, 0f);
+        }
+
+        rocketAnimCoroutines = new Coroutine[rockets.Length];
+
+        for (int i = 0; i < rocketImages.Length; i++)
+        {
+            if (rocketImages[i] != null)
+            {
+                rocketImages[i].raycastTarget = false;
+            }
+        }
+    }
+
+    IEnumerator PlayFrameAnimation(Image targetImage, Sprite[] frames, float fps, bool loop)
+    {
+        if (targetImage == null || frames == null || frames.Length == 0)
+        {
+            yield break;
+        }
+
+        targetImage.gameObject.SetActive(true);
+
+        float frameTime = 1f / fps;
+        int index = 0;
+
+        while (true)
+        {
+            if (frames[index] != null)
+            {
+                targetImage.sprite = frames[index];
+            }
+
+            yield return new WaitForSeconds(frameTime);
+
+            index++;
+
+            if (index >= frames.Length)
+            {
+                if (loop)
+                {
+                    index = 0;
+                }
+                else
+                {
+                    break;
+                }
+            }
+        }
+    }
+
+    void StartWindmillAnimation()
+    {
+        if (windmillImage == null || windmillFrames == null || windmillFrames.Length == 0) return;
+
+        if (windmillAnimCoroutine != null)
+        {
+            StopCoroutine(windmillAnimCoroutine);
+        }
+
+        windmillAnimCoroutine = StartCoroutine(
+            PlayFrameAnimation(windmillImage, windmillFrames, windmillFps, true)
+        );
+    }
+
+    void StopWindmillAnimation()
+    {
+        if (windmillAnimCoroutine != null)
+        {
+            StopCoroutine(windmillAnimCoroutine);
+            windmillAnimCoroutine = null;
+        }
+
+        if (windmillImage != null)
+        {
+            windmillImage.gameObject.SetActive(false);
+        }
+    }
+
+    void StartRainAnimation()
+    {
+        if (rainImage == null || rainFrames == null || rainFrames.Length == 0) return;
+
+        if (rainAnimCoroutine != null)
+        {
+            StopCoroutine(rainAnimCoroutine);
+            rainAnimCoroutine = null;
+        }
+
+        rainImage.gameObject.SetActive(true);
+        SetImageAlpha(rainImage, 1f);
+
+        rainAnimCoroutine = StartCoroutine(PlayRainAnimation());
+    }
+
+    void StopRainAnimation()
+    {
+        if (rainAnimCoroutine != null)
+        {
+            StopCoroutine(rainAnimCoroutine);
+            rainAnimCoroutine = null;
+        }
+
+        if (rainImage != null)
+        {
+            SetImageAlpha(rainImage, 0f);
+        }
+    }
+
+    IEnumerator PlayRainAnimation()
+    {
+        if (rainImage == null || rainFrames == null || rainFrames.Length == 0)
+        {
+            yield break;
+        }
+
+        float frameTime = 1f / rainFps;
+        int index = 0;
+
+        while (true)
+        {
+            if (rainFrames[index] != null)
+            {
+                rainImage.sprite = rainFrames[index];
+            }
+
+            SetImageAlpha(rainImage, 1f);
+
+            yield return new WaitForSeconds(frameTime);
+
+            index++;
+
+            if (index >= rainFrames.Length)
+            {
+                index = 0;
+            }
+        }
+    }
+
+    IEnumerator PlayRainForSeconds(float duration)
+    {
+        if (rainImage == null || rainFrames == null || rainFrames.Length == 0)
+        {
+            yield break;
+        }
+
+        float safeFps = Mathf.Max(1f, rainFps);
+        float frameTime = 1f / safeFps;
+
+        int frameIndex = 0;
+        float frameTimer = 0f;
+        float totalTimer = 0f;
+
+        // 先准备第一帧，避免打开物体时显示旧图
+        if (rainFrames[0] != null)
+        {
+            rainImage.sprite = rainFrames[0];
+        }
+
+        rainImage.gameObject.SetActive(true);
+        rainImage.raycastTarget = false;
+        rainImage.transform.SetAsLastSibling();
+        SetImageAlpha(rainImage, 1f);
+
+        while (totalTimer < duration)
+        {
+            totalTimer += Time.deltaTime;
+            frameTimer += Time.deltaTime;
+
+            if (frameTimer >= frameTime)
+            {
+                frameTimer -= frameTime;
+
+                frameIndex++;
+
+                if (frameIndex >= rainFrames.Length)
+                {
+                    frameIndex = 0;
+                }
+
+                if (rainFrames[frameIndex] != null)
+                {
+                    rainImage.sprite = rainFrames[frameIndex];
+                }
+            }
+
+            yield return null;
+        }
+
+        SetImageAlpha(rainImage, 0f);
+        rainImage.gameObject.SetActive(false);
+    }
+
+
 }
