@@ -70,7 +70,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         public Sprite SpringBackground;
         public Sprite WarBackground;
         public Sprite AutumnBackground;
-        public Image TimeOverlay;
         public Text Title;
         public Text State;
         public Text Hint;
@@ -86,7 +85,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         public string Name;
         public RegionID Region;
         public Vector2 BoardPosition;
+        public bool UseFacingOverride;
+        public CartDirection FacingOverride;
         public Button Button;
+        public CanvasGroup ButtonCanvasGroup;
+        public float ButtonBaseAlpha = 1f;
     }
 
     private sealed class RoadEdge
@@ -96,11 +99,10 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         public RegionID[] RequiredSpringRegions;
     }
 
-    private const string LayoutResourcePath = "Whitebox/border_mill_white_layout";
-
     private readonly Dictionary<RegionID, TimeState> regionTimes = new Dictionary<RegionID, TimeState>();
     private readonly Dictionary<RegionID, RegionView> regionViews = new Dictionary<RegionID, RegionView>();
     private readonly Dictionary<WhiteboxCartNodeId, CartNode> cartNodes = new Dictionary<WhiteboxCartNodeId, CartNode>();
+    private readonly Dictionary<RegionID, Coroutine> regionFadeRoutines = new Dictionary<RegionID, Coroutine>();
     private readonly List<RoadEdge> roadEdges = new List<RoadEdge>();
     private readonly List<WhiteboxDraggableToken> activeTokens = new List<WhiteboxDraggableToken>();
     private readonly List<string> logLines = new List<string>();
@@ -113,7 +115,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         public Sprite SpringBackground;
         public Sprite WarBackground;
         public Sprite AutumnBackground;
-        public Image TimeOverlay;
         public Text Title;
         public Text State;
         public Text Hint;
@@ -139,12 +140,42 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     }
 
     [System.Serializable]
+    private sealed class CartDirectionSpriteBinding
+    {
+        public CartCargo Cargo;
+        public CartDirection Direction;
+        public Sprite Sprite;
+    }
+
+    [System.Serializable]
     private sealed class CartMoveSpriteBinding
     {
         public WhiteboxCartNodeId From;
         public WhiteboxCartNodeId To;
         public CartCargo Cargo;
         public Sprite Sprite;
+    }
+
+    [System.Serializable]
+    private sealed class CartPointBinding
+    {
+        public bool Enabled = true;
+        public WhiteboxCartNodeId Node;
+        public string Name;
+        public RegionID Region;
+        public Vector2 BoardPosition;
+        public bool UseFacingOverride = true;
+        public CartDirection Facing = CartDirection.Right;
+        public Button Button;
+    }
+
+    [System.Serializable]
+    private sealed class CartRoadBinding
+    {
+        public bool Enabled = true;
+        public WhiteboxCartNodeId From;
+        public WhiteboxCartNodeId To;
+        public List<RegionID> RequiredSpringRegions = new List<RegionID>();
     }
 
     [Header("Main UI - drag existing scene objects here")]
@@ -167,6 +198,9 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     [SerializeField] private Button kitchenDoorNodeButton;
     [SerializeField] private Button cellarWellButton;
     [SerializeField] private Button cellarDoorButton;
+    [SerializeField] private bool blinkReachableCartPoints = true;
+    [SerializeField] private float reachablePointBlinkSpeed = 4f;
+    [SerializeField] private float reachablePointMinAlpha = 0.38f;
 
     [Header("Region Action Buttons")]
     [SerializeField] private Button harvestWheatButton;
@@ -182,6 +216,12 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     [SerializeField] private RectTransform cartVisual;
     [SerializeField] private Image cartImage;
     [SerializeField] private Text cartText;
+    [SerializeField] private Vector2 cartVisualSize = new Vector2(104f, 64f);
+
+    [Header("Cart Points - optional custom graph")]
+    [SerializeField] private bool useCustomCartPoints;
+    [SerializeField] private List<CartPointBinding> cartPoints = new List<CartPointBinding>();
+    [SerializeField] private List<CartRoadBinding> cartRoads = new List<CartRoadBinding>();
 
     [Header("Cart Art - optional sprite overrides")]
     [SerializeField] private Sprite emptyCartSprite;
@@ -189,6 +229,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     [SerializeField] private Sprite flourCartSprite;
     [SerializeField] private Sprite waterCartSprite;
     [SerializeField] private Sprite breadCartSprite;
+    [SerializeField] private List<CartDirectionSpriteBinding> cartDirectionSprites = new List<CartDirectionSpriteBinding>();
     [SerializeField] private List<CartNodeSpriteBinding> cartPointSprites = new List<CartNodeSpriteBinding>();
     [SerializeField] private List<CartMoveSpriteBinding> cartMoveSprites = new List<CartMoveSpriteBinding>();
 
@@ -197,49 +238,59 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     [Header("Indoor UI")]
     [SerializeField] private RectTransform indoorRoot;
-    [SerializeField] private Image indoorBackground;
+    [SerializeField] private RectTransform kitchenIndoorRoot;
+    [SerializeField] private RectTransform cellarIndoorRoot;
     [SerializeField] private Text indoorTitle;
     [SerializeField] private Text indoorHint;
     [SerializeField] private Slider indoorTimeSlider;
     [SerializeField] private Text indoorTimeSliderLabel;
     [SerializeField] private RectTransform indoorTokenLayer;
     [SerializeField] private Button closeIndoorButton;
-    [SerializeField] private Button indoorMoveBreadToDoorButton;
     [SerializeField] private Button indoorPrepBoardButton;
     [SerializeField] private RectTransform indoorPrepBoardDropZoneRect;
     [SerializeField] private RectTransform indoorFireboxDropZoneRect;
     [SerializeField] private RectTransform indoorOvenDropZoneRect;
+    [SerializeField] private RectTransform indoorKitchenDoorDropZoneRect;
     [SerializeField] private Image indoorPrepBoardImage;
     [SerializeField] private Image indoorOvenImage;
 
     [Header("Indoor Background Art")]
-    [SerializeField] private Sprite kitchenIndoorSpringSprite;
-    [SerializeField] private Sprite kitchenIndoorWarSprite;
-    [SerializeField] private Sprite kitchenIndoorAutumnSprite;
-    [SerializeField] private Sprite cellarIndoorSpringSprite;
-    [SerializeField] private Sprite cellarIndoorWarSprite;
-    [SerializeField] private Sprite cellarIndoorAutumnSprite;
+    [SerializeField] private Image kitchenIndoorBackgroundImage;
+    [SerializeField] private Image cellarIndoorBackgroundImage;
+    [SerializeField] private Image kitchenIndoorSeasonFilterImage;
+    [SerializeField] private Image cellarIndoorSeasonFilterImage;
+    [SerializeField] private Color indoorSpringFilterColor = new Color(0.56f, 0.86f, 0.48f, 0.18f);
+    [SerializeField] private Color indoorWarFilterColor = new Color(0.1f, 0.14f, 0.26f, 0.24f);
+    [SerializeField] private Color indoorAutumnFilterColor = new Color(0.95f, 0.62f, 0.16f, 0.2f);
+    [SerializeField] private Image kitchenWindowPatchImage;
+    [SerializeField] private Sprite kitchenWindowSpringSprite;
+    [SerializeField] private Sprite kitchenWindowWarSprite;
+    [SerializeField] private Sprite kitchenWindowAutumnSprite;
 
     [Header("Cellar Object Art")]
-    [SerializeField] private Image cellarBasketImage;
-    [SerializeField] private Text cellarBasketText;
+    [SerializeField] private Image cellarEmptyBasketImage;
+    [SerializeField] private Image cellarBreadBasketImage;
     [SerializeField] private Image cellarGirlImage;
     [SerializeField] private Text cellarGirlText;
-    [SerializeField] private Sprite cellarBasketEmptySprite;
-    [SerializeField] private Sprite cellarBasketBreadSprite;
     [SerializeField] private List<Sprite> cellarGirlWaitingSprites = new List<Sprite>();
     [SerializeField] private List<Sprite> cellarGirlEatingSprites = new List<Sprite>();
     [SerializeField] private float cellarGirlAnimationFrameSeconds = 0.18f;
 
     [Header("Kitchen Object Art")]
+    [SerializeField] private Image kitchenDoorFlourImage;
+    [SerializeField] private Image kitchenDoorWaterImage;
+    [SerializeField] private Image kitchenRawDoughImage;
+    [SerializeField] private Image kitchenFermentedDoughImage;
+    [SerializeField] private Image kitchenMoldedDoughImage;
+    [SerializeField] private Image kitchenBreadReadyImage;
     [SerializeField] private Sprite prepBoardEmptySprite;
     [SerializeField] private Sprite prepBoardFlourSprite;
     [SerializeField] private Sprite prepBoardFlourWaterSprite;
     [SerializeField] private Sprite prepBoardDoughSprite;
     [SerializeField] private Sprite prepBoardFermentedDoughSprite;
     [SerializeField] private Sprite prepBoardMoldedDoughSprite;
-    [SerializeField] private Sprite ovenColdSprite;
-    [SerializeField] private Sprite ovenLitSprite;
+    [SerializeField] private Image kitchenFireImage;
+    [SerializeField] private Sprite kitchenFireLitSprite;
     [SerializeField] private Sprite ovenDoughSprite;
     [SerializeField] private Sprite ovenBakingSprite;
     [SerializeField] private Sprite ovenBreadSprite;
@@ -253,9 +304,8 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     [SerializeField] private Button finalRestartButton;
     [SerializeField] private Button finalQuitButton;
 
-    private RectTransform kitchenProcessVisual;
-    private Text kitchenProcessText;
-    private RectTransform cellarBasketVisual;
+    private RectTransform cellarEmptyBasketVisual;
+    private RectTransform cellarBreadBasketVisual;
     private RectTransform cellarGirlVisual;
     private CanvasGroup finalCanvasGroup;
     private Coroutine endingRoutine;
@@ -266,6 +316,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private WhiteboxDropZone indoorPrepBoardDropZone;
     private WhiteboxDropZone indoorFireboxDropZone;
     private WhiteboxDropZone indoorOvenDropZone;
+    private WhiteboxDropZone indoorKitchenDoorDropZone;
     private Font uiFont;
     private WhiteboxDraggableToken cartCargoToken;
     private CanvasGroup indoorCanvasGroup;
@@ -292,13 +343,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private bool timeLocked;
     private bool cartMoving;
 
-    private readonly Color paper = new Color(0.965f, 0.955f, 0.925f, 1f);
     private readonly Color ink = new Color(0.12f, 0.12f, 0.12f, 1f);
     private readonly Color muted = new Color(0.34f, 0.35f, 0.36f, 1f);
     private readonly Color spring = new Color(0.42f, 0.78f, 0.47f, 0.22f);
     private readonly Color war = new Color(0.1f, 0.14f, 0.26f, 0.28f);
     private readonly Color autumn = new Color(0.95f, 0.66f, 0.18f, 0.26f);
-    private readonly Color warm = new Color(1f, 0.42f, 0.12f, 0.34f);
 
     public RectTransform DragLayer
     {
@@ -329,6 +378,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private void Update()
     {
         UpdateCellarGirlAnimation();
+        UpdateCartPointBlink();
     }
 
     private Font CreateReadableUIFont()
@@ -363,25 +413,29 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         BindRoadNodeButton(WhiteboxCartNodeId.KitchenDoor, kitchenDoorNodeButton);
         BindRoadNodeButton(WhiteboxCartNodeId.CellarWell, cellarWellButton);
         BindRoadNodeButton(WhiteboxCartNodeId.CellarDoor, cellarDoorButton);
+        BindCustomCartPointButtons();
+        CaptureCartNodePositionsFromButtons();
 
         BindButton(harvestWheatButton, SpawnWheatToken);
         BindButton(openKitchenButton, OpenKitchen);
         BindButton(collectWaterButton, CollectWater);
         BindButton(openCellarButton, OpenCellar);
         BindButton(closeIndoorButton, CloseIndoor);
-        BindButton(indoorMoveBreadToDoorButton, MoveBreadToKitchenDoor);
         BindButton(indoorPrepBoardButton, KneadDough);
         BindButton(finalRestartButton, ResetPrototype);
         BindButton(finalQuitButton, QuitGame);
         BindIndoorTimeSlider();
         EnsureDefaultSceneReferences();
+        AutoBindIndoorImagesFromHierarchy();
         SyncCellarHierarchyReferences();
+        AutoBindIndoorDropZonesFromHierarchy();
 
         kitchenDoorDropZone = SetupDropZone(kitchenDoorDropZoneRect, WhiteboxDropZoneType.KitchenDoor, RegionID.Kitchen);
         cellarEntranceDropZone = SetupDropZone(cellarEntranceDropZoneRect, WhiteboxDropZoneType.CellarEntrance, RegionID.Cellar);
         indoorPrepBoardDropZone = SetupDropZone(indoorPrepBoardDropZoneRect, WhiteboxDropZoneType.PrepBoard, RegionID.Kitchen);
         indoorFireboxDropZone = SetupDropZone(indoorFireboxDropZoneRect, WhiteboxDropZoneType.Firebox, RegionID.Kitchen);
         indoorOvenDropZone = SetupDropZone(indoorOvenDropZoneRect, WhiteboxDropZoneType.Oven, RegionID.Kitchen);
+        indoorKitchenDoorDropZone = SetupDropZone(indoorKitchenDoorDropZoneRect, WhiteboxDropZoneType.KitchenDoor, RegionID.Kitchen);
 
         if (cartVisual != null)
         {
@@ -470,60 +524,19 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         if (indoorRoot != null)
         {
             DeactivateLegacyIndoorControls();
-
-            if (indoorPrepBoardImage == null)
-            {
-                indoorPrepBoardImage = CreateDefaultIndoorImage("DefaultPrepBoardImage", "案板", new Vector2(0.42f, 0.38f), new Vector2(156f, 82f), new Color(0.92f, 0.82f, 0.62f, 0.9f));
-            }
-
-            if (indoorPrepBoardDropZoneRect == null)
-            {
-                indoorPrepBoardDropZoneRect = CreateDefaultDropZoneRect("DefaultPrepBoardDropZone", indoorRoot, new Vector2(0.42f, 0.38f), new Vector2(176f, 96f));
-            }
-
-            if (indoorPrepBoardButton == null)
-            {
-                indoorPrepBoardButton = CreateButton("DefaultPrepBoardButton", indoorRoot, "案板\n点击和面", 14, KneadDough);
-                Place(indoorPrepBoardButton.GetComponent<RectTransform>(), new Vector2(0.42f, 0.38f), new Vector2(156f, 82f));
-                Image buttonImage = indoorPrepBoardButton.GetComponent<Image>();
-                if (buttonImage != null)
-                {
-                    buttonImage.color = new Color(1f, 1f, 1f, 0.04f);
-                    buttonImage.raycastTarget = true;
-                }
-            }
-
-            if (indoorOvenImage == null)
-            {
-                indoorOvenImage = CreateDefaultIndoorImage("DefaultOvenImage", "烤炉", new Vector2(0.72f, 0.34f), new Vector2(150f, 92f), new Color(0.45f, 0.42f, 0.38f, 0.92f));
-            }
-
-            if (indoorOvenDropZoneRect == null)
-            {
-                indoorOvenDropZoneRect = CreateDefaultDropZoneRect("DefaultOvenDropZone", indoorRoot, new Vector2(0.72f, 0.34f), new Vector2(168f, 106f));
-            }
-
-            if (cellarBasketImage == null)
-            {
-                cellarBasketImage = CreateDefaultIndoorImage("CellarBasket", "空篮子", new Vector2(0.34f, 0.47f), new Vector2(136f, 150f), new Color(0.72f, 0.76f, 0.82f, 0.72f));
-            }
-
-            if (cellarGirlImage == null)
-            {
-                cellarGirlImage = CreateDefaultIndoorImage("CellarGirlMarker", "小女孩\n发抖", new Vector2(0.64f, 0.55f), new Vector2(128f, 82f), new Color(0.72f, 0.78f, 0.92f, 0.94f));
-            }
         }
     }
 
     private void SyncCellarHierarchyReferences()
     {
-        if (cellarBasketImage != null)
+        if (cellarEmptyBasketImage != null)
         {
-            cellarBasketVisual = cellarBasketImage.rectTransform;
-            if (cellarBasketText == null)
-            {
-                cellarBasketText = FindFirstTextChild(cellarBasketVisual);
-            }
+            cellarEmptyBasketVisual = cellarEmptyBasketImage.rectTransform;
+        }
+
+        if (cellarBreadBasketImage != null)
+        {
+            cellarBreadBasketVisual = cellarBreadBasketImage.rectTransform;
         }
 
         if (cellarGirlImage != null)
@@ -552,6 +565,159 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         return parent.GetComponentInChildren<Text>(true);
     }
 
+    private void AutoBindIndoorImagesFromHierarchy()
+    {
+        if (indoorRoot == null)
+        {
+            return;
+        }
+
+        if (kitchenIndoorBackgroundImage == null)
+        {
+            kitchenIndoorBackgroundImage = FindFirstImageChild(indoorRoot, "kitchenBG", "KitchenBG", "KitchenBackground");
+        }
+
+        if (cellarIndoorBackgroundImage == null)
+        {
+            cellarIndoorBackgroundImage = FindFirstImageChild(indoorRoot, "BG", "CellarBG", "CellarBackground");
+        }
+
+        if (kitchenIndoorSeasonFilterImage == null)
+        {
+            kitchenIndoorSeasonFilterImage = FindFirstImageChild(kitchenIndoorRoot != null ? kitchenIndoorRoot : indoorRoot, "Filter", "KitchenFilter");
+        }
+
+        if (cellarIndoorSeasonFilterImage == null)
+        {
+            cellarIndoorSeasonFilterImage = FindFirstImageChild(cellarIndoorRoot != null ? cellarIndoorRoot : indoorRoot, "Filter", "CellarFilter");
+        }
+
+        if (kitchenWindowPatchImage == null)
+        {
+            kitchenWindowPatchImage = FindFirstImageChild(indoorRoot, "KCWindow", "KitchenWindow", "Window");
+        }
+
+        if (indoorPrepBoardImage == null)
+        {
+            indoorPrepBoardImage = FindFirstImageChild(indoorRoot, "DefaultPrepBoardImage", "PrepBoard", "案板");
+        }
+
+        if (indoorOvenImage == null)
+        {
+            indoorOvenImage = FindFirstImageChild(indoorRoot, "DefaultOvenImage", "Oven", "烤炉");
+        }
+
+        if (kitchenFireImage == null)
+        {
+            kitchenFireImage = FindFirstImageChild(indoorRoot, "Fire", "KitchenFire", "火");
+        }
+
+        if (kitchenDoorFlourImage == null)
+        {
+            kitchenDoorFlourImage = FindFirstImageChild(indoorRoot, "Flour", "DoorFlour", "Bag", "面粉");
+        }
+
+        if (kitchenDoorWaterImage == null)
+        {
+            kitchenDoorWaterImage = FindFirstImageChild(indoorRoot, "Water", "DoorWater", "清水");
+        }
+
+        if (kitchenRawDoughImage == null)
+        {
+            kitchenRawDoughImage = FindFirstImageChild(indoorRoot, "RawDough", "生面团");
+        }
+
+        if (kitchenFermentedDoughImage == null)
+        {
+            kitchenFermentedDoughImage = FindFirstImageChild(indoorRoot, "FermentedDough", "发酵面团");
+        }
+
+        if (kitchenMoldedDoughImage == null)
+        {
+            kitchenMoldedDoughImage = FindFirstImageChild(indoorRoot, "MoldedDough", "发霉面团");
+        }
+
+        if (kitchenBreadReadyImage == null)
+        {
+            kitchenBreadReadyImage = FindFirstImageChild(indoorRoot, "Bread", "KitchenBread", "面包");
+        }
+
+        if (cellarEmptyBasketImage == null)
+        {
+            cellarEmptyBasketImage = FindFirstImageChild(indoorRoot, "EmptyBasket", "空篮子");
+        }
+
+        if (cellarBreadBasketImage == null)
+        {
+            cellarBreadBasketImage = FindFirstImageChild(indoorRoot, "Basket", "BreadBasket", "装面包篮子");
+        }
+
+        if (cellarGirlImage == null)
+        {
+            cellarGirlImage = FindFirstImageChild(indoorRoot, "LittleGirl", "CellarGirl", "小女孩");
+        }
+    }
+
+    private Image FindFirstImageChild(Transform parent, params string[] names)
+    {
+        for (int i = 0; i < names.Length; i++)
+        {
+            Transform child = FindDeepChild(parent, names[i]);
+            if (child != null)
+            {
+                Image image = child.GetComponent<Image>();
+                if (image != null)
+                {
+                    return image;
+                }
+            }
+        }
+
+        return null;
+    }
+
+    private void AutoBindIndoorDropZonesFromHierarchy()
+    {
+        if (indoorRoot == null)
+        {
+            return;
+        }
+
+        if (indoorPrepBoardDropZoneRect == null)
+        {
+            indoorPrepBoardDropZoneRect = FindFirstRectChild(indoorRoot, "DefaultPrepBoardDropZone", "PrepBoardDropZone", "案板投放区");
+        }
+
+        if (indoorFireboxDropZoneRect == null)
+        {
+            indoorFireboxDropZoneRect = FindFirstRectChild(indoorRoot, "FireboxDropZone", "炉膛投放区");
+        }
+
+        if (indoorOvenDropZoneRect == null)
+        {
+            indoorOvenDropZoneRect = FindFirstRectChild(indoorRoot, "DefaultOvenDropZone", "OvenDropZone", "烤炉投放区");
+        }
+
+        if (indoorKitchenDoorDropZoneRect == null)
+        {
+            indoorKitchenDoorDropZoneRect = FindFirstRectChild(indoorRoot, "DefaultKitchenDoorExitDropZone", "DoorDropZone (1)", "DoorDropZone", "KitchenDoorExit", "厨房门口投放区");
+        }
+    }
+
+    private RectTransform FindFirstRectChild(Transform parent, params string[] names)
+    {
+        for (int i = 0; i < names.Length; i++)
+        {
+            Transform child = FindDeepChild(parent, names[i]);
+            if (child != null)
+            {
+                return child as RectTransform;
+            }
+        }
+
+        return null;
+    }
+
     private void DeactivateLegacyIndoorControls()
     {
         string[] legacyNames =
@@ -560,7 +726,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             "IndoorAddWater",
             "IndoorKneadDough",
             "IndoorLoadOven",
-            "TakeBreadIntoCellar"
+            "TakeBreadIntoCellar",
+            "IndoorMoveBreadDoor",
+            "KitchenProcessMarker",
+            "IndoorProcessMarker",
+            "KitchenIndoorProcessMarker"
         };
 
         for (int i = 0; i < legacyNames.Length; i++)
@@ -582,13 +752,20 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             "DefaultPrepBoardButton",
             "DefaultOvenImage",
             "DefaultOvenDropZone",
+            "DefaultKitchenDoorExitDropZone",
+            "KitchenRawDough",
+            "KitchenFermentedDough",
+            "KitchenMoldedDough",
+            "KitchenBreadReady",
             "IndoorPrepBoardButton",
             "PrepBoard",
             "Firebox",
             "Oven",
+            "KitchenDoorExit",
             "案板",
             "炉膛",
-            "烤炉"
+            "烤炉",
+            "厨房门口"
         };
 
         for (int i = 0; i < kitchenOnlyNames.Length; i++)
@@ -604,7 +781,9 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         string[] cellarOnlyNames =
         {
             "CellarGirlMarker",
-            "CellarBasket"
+            "CellarBasket",
+            "CellarEmptyBasket",
+            "CellarBreadBasket"
         };
 
         for (int i = 0; i < cellarOnlyNames.Length; i++)
@@ -671,26 +850,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         return null;
     }
 
-    private Image CreateDefaultIndoorImage(string name, string label, Vector2 position, Vector2 size, Color color)
-    {
-        RectTransform rect = CreatePanel(name, indoorRoot, color);
-        Place(rect, position, size);
-        Text text = CreateText("Label", rect, label, 16, FontStyle.Bold, ink, TextAnchor.MiddleCenter);
-        Stretch(text.rectTransform, new Vector2(4f, 2f), new Vector2(-4f, -2f));
-        Image image = rect.GetComponent<Image>();
-        image.raycastTarget = false;
-        return image;
-    }
-
-    private RectTransform CreateDefaultDropZoneRect(string name, Transform parent, Vector2 position, Vector2 size)
-    {
-        RectTransform rect = CreatePanel(name, parent, new Color(1f, 1f, 1f, 0.01f));
-        Place(rect, position, size);
-        Image image = rect.GetComponent<Image>();
-        image.raycastTarget = true;
-        return rect;
-    }
-
     private void RegisterRegionView(RegionID region, RegionBinding binding, params Button[] actionButtons)
     {
         if (binding == null)
@@ -706,7 +865,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         view.SpringBackground = binding.SpringBackground;
         view.WarBackground = binding.WarBackground;
         view.AutumnBackground = binding.AutumnBackground;
-        view.TimeOverlay = binding.TimeOverlay;
         view.Title = binding.Title;
         view.State = binding.State;
         view.Hint = binding.Hint;
@@ -744,6 +902,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     {
         if (!cartNodes.ContainsKey(id))
         {
+            if (button != null && useCustomCartPoints)
+            {
+                button.gameObject.SetActive(false);
+            }
+
             return;
         }
 
@@ -759,6 +922,81 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         button.onClick.AddListener(delegate { TryMoveCartToNode(capturedId); });
     }
 
+    private void BindCustomCartPointButtons()
+    {
+        if (!useCustomCartPoints)
+        {
+            return;
+        }
+
+        for (int i = 0; i < cartPoints.Count; i++)
+        {
+            CartPointBinding binding = cartPoints[i];
+            if (binding == null || !binding.Enabled || binding.Button == null || !cartNodes.ContainsKey(binding.Node))
+            {
+                continue;
+            }
+
+            CartNode node = cartNodes[binding.Node];
+            node.Button = binding.Button;
+            binding.Button.gameObject.SetActive(true);
+            binding.Button.onClick.RemoveAllListeners();
+            WhiteboxCartNodeId capturedId = binding.Node;
+            binding.Button.onClick.AddListener(delegate { TryMoveCartToNode(capturedId); });
+        }
+    }
+
+    private void CaptureCartNodePositionsFromButtons()
+    {
+        foreach (CartNode node in cartNodes.Values)
+        {
+            if (node.Button == null)
+            {
+                continue;
+            }
+
+            RectTransform buttonRect = node.Button.GetComponent<RectTransform>();
+            if (buttonRect == null)
+            {
+                continue;
+            }
+
+            Vector2 normalizedPosition;
+            if (TryGetNormalizedBoardPosition(buttonRect, out normalizedPosition))
+            {
+                node.BoardPosition = normalizedPosition;
+            }
+        }
+    }
+
+    private bool TryGetNormalizedBoardPosition(RectTransform rect, out Vector2 normalizedPosition)
+    {
+        normalizedPosition = Vector2.zero;
+        RectTransform reference = boardOverlay != null ? boardOverlay : rect.parent as RectTransform;
+        if (reference == null)
+        {
+            return false;
+        }
+
+        Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(null, rect.position);
+        Vector2 localPoint;
+        if (!RectTransformUtility.ScreenPointToLocalPointInRectangle(reference, screenPoint, null, out localPoint))
+        {
+            return false;
+        }
+
+        Rect referenceRect = reference.rect;
+        if (Mathf.Approximately(referenceRect.width, 0f) || Mathf.Approximately(referenceRect.height, 0f))
+        {
+            return false;
+        }
+
+        normalizedPosition = new Vector2(
+            Mathf.InverseLerp(referenceRect.xMin, referenceRect.xMax, localPoint.x),
+            Mathf.InverseLerp(referenceRect.yMin, referenceRect.yMax, localPoint.y));
+        return true;
+    }
+
     private void BindButton(Button button, UnityEngine.Events.UnityAction action)
     {
         if (button == null)
@@ -766,6 +1004,13 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
+        Image image = button.GetComponent<Image>();
+        if (image != null)
+        {
+            image.raycastTarget = true;
+        }
+
+        button.interactable = true;
         button.onClick.RemoveAllListeners();
         button.onClick.AddListener(action);
     }
@@ -804,6 +1049,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         regionTimes[RegionID.Cellar] = TimeState.Spring;
 
         cartNodeId = WhiteboxCartNodeId.MillRoad;
+        if (!cartNodes.ContainsKey(cartNodeId))
+        {
+            cartNodeId = GetFirstAvailableCartNode();
+        }
+
         cartCargo = CartCargo.Empty;
         cartDirection = CartDirection.Right;
         currentIndoorRoom = WhiteboxIndoorRoom.None;
@@ -849,153 +1099,24 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 #endif
     }
 
-    private void BuildInterface()
-    {
-        GameObject canvasObject = new GameObject("Border Mill Image Whitebox Canvas");
-        canvasObject.transform.SetParent(transform, false);
-
-        Canvas canvas = canvasObject.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
-        canvas.sortingOrder = 500;
-
-        CanvasScaler scaler = canvasObject.AddComponent<CanvasScaler>();
-        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
-        scaler.referenceResolution = new Vector2(1920f, 1080f);
-        scaler.matchWidthOrHeight = 0.5f;
-
-        canvasObject.AddComponent<GraphicRaycaster>();
-
-        root = canvasObject.GetComponent<RectTransform>();
-        Stretch(root);
-
-        Image background = CreateImage("PaperBackground", root, paper);
-        Stretch(background.rectTransform);
-
-        BuildSceneBoard(root);
-        BuildInSceneHud(sceneBoard);
-        BuildIndoorOverlay(sceneBoard);
-        BuildFinalOverlay(root);
-
-        dragLayer = CreatePanel("DragLayer", root, Color.clear);
-        Stretch(dragLayer);
-        dragLayer.SetAsLastSibling();
-    }
-
-    private void BuildSceneBoard(RectTransform parent)
-    {
-        GameObject boardObject = new GameObject("WhiteDrawingBoard");
-        boardObject.transform.SetParent(parent, false);
-        sceneBoard = boardObject.AddComponent<RectTransform>();
-        sceneBoard.anchorMin = new Vector2(0.5f, 0.5f);
-        sceneBoard.anchorMax = new Vector2(0.5f, 0.5f);
-        sceneBoard.pivot = new Vector2(0.5f, 0.5f);
-        sceneBoard.anchoredPosition = Vector2.zero;
-        sceneBoard.sizeDelta = new Vector2(1080f, 1080f);
-
-        RawImage drawing = boardObject.AddComponent<RawImage>();
-        drawing.color = Color.white;
-        drawing.texture = Resources.Load<Texture2D>(LayoutResourcePath);
-        drawing.raycastTarget = false;
-
-        boardOverlay = CreatePanel("BoardOverlay", sceneBoard, Color.clear);
-        Stretch(boardOverlay);
-
-        CreateRegion(RegionID.Mill, "A-1 磨坊", new Vector2(0f, 0.5f), new Vector2(0.5f, 1f));
-        CreateRegion(RegionID.Field, "A-2 麦田", new Vector2(0.5f, 0.5f), new Vector2(1f, 1f));
-        CreateRegion(RegionID.Kitchen, "A-3 厨房", new Vector2(0f, 0f), new Vector2(0.5f, 0.5f));
-        CreateRegion(RegionID.Cellar, "A-4 地窖", new Vector2(0.5f, 0f), new Vector2(1f, 0.5f));
-
-        BuildRoadGraph();
-        BuildRoadNodeButtons();
-        BuildEntranceDropZones();
-        BuildCartVisual();
-    }
-
-    private void CreateRegion(RegionID region, string title, Vector2 min, Vector2 max)
-    {
-        RectTransform regionRoot = CreatePanel(title, boardOverlay, Color.clear);
-        Anchor(regionRoot, min, max, Vector2.zero, Vector2.zero);
-        regionRoot.GetComponent<Image>().raycastTarget = false;
-
-        RegionView view = new RegionView();
-        view.Region = region;
-        view.Root = regionRoot;
-        view.TimeOverlay = CreateImage("TimeOverlay", regionRoot, Color.clear);
-        Stretch(view.TimeOverlay.rectTransform);
-        view.TimeOverlay.raycastTarget = false;
-
-        view.Title = CreateText("Title", regionRoot, title, 19, FontStyle.Bold, ink, TextAnchor.UpperLeft);
-        Anchor(view.Title.rectTransform, new Vector2(0.035f, 0.89f), new Vector2(0.42f, 0.975f), Vector2.zero, Vector2.zero);
-
-        view.State = CreateText("State", regionRoot, "", 17, FontStyle.Bold, ink, TextAnchor.UpperRight);
-        Anchor(view.State.rectTransform, new Vector2(0.6f, 0.9f), new Vector2(0.965f, 0.975f), Vector2.zero, Vector2.zero);
-
-        RectTransform timeRow = CreatePanel("TimeBar", regionRoot, new Color(1f, 1f, 1f, 0.72f));
-        Anchor(timeRow, new Vector2(0.035f, 0.815f), new Vector2(0.41f, 0.875f), Vector2.zero, Vector2.zero);
-
-        view.TimeSlider = CreateTimeSlider("TimeSlider", timeRow, delegate(float value)
-        {
-            SetRegionTime(region, SliderValueToTime(value));
-        });
-        Anchor(view.TimeSlider.GetComponent<RectTransform>(), new Vector2(0.08f, 0.38f), new Vector2(0.92f, 0.88f), Vector2.zero, Vector2.zero);
-
-        view.TimeSliderLabel = CreateText("TimeSliderLabel", timeRow, "春        战        秋", 11, FontStyle.Bold, muted, TextAnchor.LowerCenter);
-        Anchor(view.TimeSliderLabel.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0.42f), Vector2.zero, Vector2.zero);
-
-        RectTransform hintBox = CreatePanel("HintBox", regionRoot, new Color(1f, 1f, 1f, 0.72f));
-        Anchor(hintBox, new Vector2(0.035f, 0.025f), new Vector2(0.965f, 0.13f), Vector2.zero, Vector2.zero);
-        view.Hint = CreateText("Hint", hintBox, "", 14, FontStyle.Normal, muted, TextAnchor.MiddleLeft);
-        Stretch(view.Hint.rectTransform, new Vector2(8f, 2f), new Vector2(-8f, -2f));
-        view.Hint.horizontalOverflow = HorizontalWrapMode.Wrap;
-
-        view.TokenLayer = CreatePanel("TokenLayer", regionRoot, Color.clear);
-        Stretch(view.TokenLayer);
-        view.TokenLayer.GetComponent<Image>().raycastTarget = false;
-
-        BuildRegionActions(view);
-        regionViews.Add(region, view);
-    }
-
-    private void BuildRegionActions(RegionView view)
-    {
-        if (view.Region == RegionID.Mill)
-        {
-            return;
-        }
-        else if (view.Region == RegionID.Field)
-        {
-            view.ActionButtons.Add(CreateActionButton(view.Root, "收割麦子", new Vector2(0.58f, 0.42f), new Vector2(126f, 40f), SpawnWheatToken));
-        }
-        else if (view.Region == RegionID.Kitchen)
-        {
-            view.ActionButtons.Add(CreateActionButton(view.Root, "进厨房", new Vector2(0.75f, 0.42f), new Vector2(100f, 40f), OpenKitchen));
-        }
-        else if (view.Region == RegionID.Cellar)
-        {
-            view.ActionButtons.Add(CreateActionButton(view.Root, "取清水", new Vector2(0.66f, 0.54f), new Vector2(100f, 40f), CollectWater));
-            view.ActionButtons.Add(CreateActionButton(view.Root, "进地窖", new Vector2(0.45f, 0.38f), new Vector2(100f, 40f), OpenCellar));
-        }
-    }
-
-    private Button CreateActionButton(RectTransform parent, string label, Vector2 normalizedPosition, Vector2 size, UnityEngine.Events.UnityAction action)
-    {
-        Button button = CreateButton(label, parent, label, 14, action);
-        Place(button.GetComponent<RectTransform>(), normalizedPosition, size);
-        return button;
-    }
-
     private void BuildRoadGraph()
     {
         cartNodes.Clear();
         roadEdges.Clear();
 
-        AddCartNode(WhiteboxCartNodeId.MillRoad, "磨坊路口", RegionID.Mill, new Vector2(0.35f, 0.63f));
-        AddCartNode(WhiteboxCartNodeId.MillStone, "风车石磨", RegionID.Mill, new Vector2(0.22f, 0.66f));
-        AddCartNode(WhiteboxCartNodeId.FieldRoad, "麦田路口", RegionID.Field, new Vector2(0.64f, 0.62f));
-        AddCartNode(WhiteboxCartNodeId.FieldHarvest, "可收割麦田", RegionID.Field, new Vector2(0.79f, 0.66f));
-        AddCartNode(WhiteboxCartNodeId.KitchenDoor, "厨房门口", RegionID.Kitchen, new Vector2(0.31f, 0.23f));
-        AddCartNode(WhiteboxCartNodeId.CellarWell, "地窖外路点", RegionID.Cellar, new Vector2(0.73f, 0.42f));
-        AddCartNode(WhiteboxCartNodeId.CellarDoor, "地窖入口", RegionID.Cellar, new Vector2(0.61f, 0.31f));
+        if (useCustomCartPoints && cartPoints.Count > 0)
+        {
+            BuildCustomRoadGraph();
+            return;
+        }
+
+        AddCartNode(WhiteboxCartNodeId.MillRoad, "磨坊路口", RegionID.Mill, new Vector2(0.35f, 0.63f), false, CartDirection.Right);
+        AddCartNode(WhiteboxCartNodeId.MillStone, "风车石磨", RegionID.Mill, new Vector2(0.22f, 0.66f), false, CartDirection.Right);
+        AddCartNode(WhiteboxCartNodeId.FieldRoad, "麦田路口", RegionID.Field, new Vector2(0.64f, 0.62f), false, CartDirection.Right);
+        AddCartNode(WhiteboxCartNodeId.FieldHarvest, "可收割麦田", RegionID.Field, new Vector2(0.79f, 0.66f), false, CartDirection.Right);
+        AddCartNode(WhiteboxCartNodeId.KitchenDoor, "厨房门口", RegionID.Kitchen, new Vector2(0.31f, 0.23f), false, CartDirection.Right);
+        AddCartNode(WhiteboxCartNodeId.CellarWell, "地窖外路点", RegionID.Cellar, new Vector2(0.73f, 0.42f), false, CartDirection.Right);
+        AddCartNode(WhiteboxCartNodeId.CellarDoor, "地窖入口", RegionID.Cellar, new Vector2(0.61f, 0.31f), false, CartDirection.Right);
 
         AddRoadEdge(WhiteboxCartNodeId.MillRoad, WhiteboxCartNodeId.MillStone, RegionID.Mill);
         AddRoadEdge(WhiteboxCartNodeId.MillRoad, WhiteboxCartNodeId.FieldRoad, RegionID.Mill, RegionID.Field);
@@ -1006,13 +1127,63 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         AddRoadEdge(WhiteboxCartNodeId.KitchenDoor, WhiteboxCartNodeId.CellarDoor, RegionID.Kitchen, RegionID.Cellar);
     }
 
-    private void AddCartNode(WhiteboxCartNodeId id, string name, RegionID region, Vector2 boardPosition)
+    private void BuildCustomRoadGraph()
     {
+        for (int i = 0; i < cartPoints.Count; i++)
+        {
+            CartPointBinding binding = cartPoints[i];
+            if (binding == null || !binding.Enabled)
+            {
+                continue;
+            }
+
+            string nodeName = string.IsNullOrEmpty(binding.Name) ? GetDefaultCartNodeName(binding.Node) : binding.Name;
+            AddCartNode(binding.Node, nodeName, binding.Region, binding.BoardPosition, binding.UseFacingOverride, binding.Facing);
+        }
+
+        for (int i = 0; i < cartRoads.Count; i++)
+        {
+            CartRoadBinding binding = cartRoads[i];
+            if (binding == null || !binding.Enabled || !cartNodes.ContainsKey(binding.From) || !cartNodes.ContainsKey(binding.To))
+            {
+                continue;
+            }
+
+            AddRoadEdge(binding.From, binding.To, binding.RequiredSpringRegions != null ? binding.RequiredSpringRegions.ToArray() : new RegionID[0]);
+        }
+
+        if (cartNodes.Count == 0)
+        {
+            AddCartNode(WhiteboxCartNodeId.MillRoad, "磨坊路口", RegionID.Mill, new Vector2(0.35f, 0.63f), false, CartDirection.Right);
+        }
+    }
+
+    private string GetDefaultCartNodeName(WhiteboxCartNodeId id)
+    {
+        if (id == WhiteboxCartNodeId.MillRoad) return "磨坊路口";
+        if (id == WhiteboxCartNodeId.MillStone) return "风车石磨";
+        if (id == WhiteboxCartNodeId.FieldRoad) return "麦田路口";
+        if (id == WhiteboxCartNodeId.FieldHarvest) return "可收割麦田";
+        if (id == WhiteboxCartNodeId.KitchenDoor) return "厨房门口";
+        if (id == WhiteboxCartNodeId.CellarWell) return "地窖外路点";
+        if (id == WhiteboxCartNodeId.CellarDoor) return "地窖入口";
+        return id.ToString();
+    }
+
+    private void AddCartNode(WhiteboxCartNodeId id, string name, RegionID region, Vector2 boardPosition, bool useFacingOverride, CartDirection facingOverride)
+    {
+        if (cartNodes.ContainsKey(id))
+        {
+            return;
+        }
+
         CartNode node = new CartNode();
         node.Id = id;
         node.Name = name;
         node.Region = region;
         node.BoardPosition = boardPosition;
+        node.UseFacingOverride = useFacingOverride;
+        node.FacingOverride = facingOverride;
         cartNodes.Add(id, node);
     }
 
@@ -1025,117 +1196,14 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         roadEdges.Add(edge);
     }
 
-    private void BuildRoadNodeButtons()
+    private WhiteboxCartNodeId GetFirstAvailableCartNode()
     {
-        foreach (CartNode node in cartNodes.Values)
+        foreach (WhiteboxCartNodeId nodeId in cartNodes.Keys)
         {
-            Button button = CreateButton("Point_" + node.Id, boardOverlay, "●\n" + node.Name, 12, delegate { TryMoveCartToNode(node.Id); });
-            node.Button = button;
-            PlaceOnBoard(button.GetComponent<RectTransform>(), node.BoardPosition, new Vector2(84f, 48f));
-            Image image = button.GetComponent<Image>();
-            image.color = new Color(1f, 1f, 1f, 0.62f);
+            return nodeId;
         }
-    }
 
-    private void BuildEntranceDropZones()
-    {
-        kitchenDoorDropZone = CreateDropZone(boardOverlay, WhiteboxDropZoneType.KitchenDoor, RegionID.Kitchen, "厨房门口\n投放");
-        PlaceOnBoard(kitchenDoorDropZone.GetComponent<RectTransform>(), new Vector2(0.37f, 0.26f), new Vector2(118f, 58f));
-
-        cellarEntranceDropZone = CreateDropZone(boardOverlay, WhiteboxDropZoneType.CellarEntrance, RegionID.Cellar, "地窖入口\n投放");
-        PlaceOnBoard(cellarEntranceDropZone.GetComponent<RectTransform>(), new Vector2(0.58f, 0.31f), new Vector2(124f, 62f));
-
-        foreach (CartNode node in cartNodes.Values)
-        {
-            node.Button.transform.SetAsLastSibling();
-        }
-    }
-
-    private void BuildCartVisual()
-    {
-        cartVisual = CreatePanel("Cart", boardOverlay, new Color(1f, 1f, 1f, 0.92f));
-        cartVisual.sizeDelta = new Vector2(100f, 62f);
-
-        cartImage = cartVisual.GetComponent<Image>();
-        cartDropZone = cartVisual.gameObject.AddComponent<WhiteboxDropZone>();
-        cartDropZone.Initialize(this, WhiteboxDropZoneType.Cart, GetCartRegion());
-
-        cartText = CreateText("CartText", cartVisual, "", 14, FontStyle.Bold, ink, TextAnchor.MiddleCenter);
-        Stretch(cartText.rectTransform, new Vector2(4f, 2f), new Vector2(-4f, -2f));
-    }
-
-    private void BuildInSceneHud(RectTransform parent)
-    {
-        RectTransform hud = CreatePanel("InSceneHud", parent, new Color(1f, 1f, 1f, 0.78f));
-        Anchor(hud, new Vector2(0.14f, 0.01f), new Vector2(0.86f, 0.078f), Vector2.zero, Vector2.zero);
-
-        statusText = CreateText("Status", hud, "", 14, FontStyle.Bold, ink, TextAnchor.UpperLeft);
-        Anchor(statusText.rectTransform, new Vector2(0.025f, 0.5f), new Vector2(0.975f, 0.95f), Vector2.zero, Vector2.zero);
-        statusText.horizontalOverflow = HorizontalWrapMode.Wrap;
-
-        checklistText = CreateText("Checklist", hud, "", 13, FontStyle.Normal, ink, TextAnchor.UpperLeft);
-        Anchor(checklistText.rectTransform, new Vector2(0.025f, 0.22f), new Vector2(0.975f, 0.55f), Vector2.zero, Vector2.zero);
-        checklistText.horizontalOverflow = HorizontalWrapMode.Wrap;
-
-        logText = CreateText("Log", hud, "", 13, FontStyle.Normal, muted, TextAnchor.LowerLeft);
-        Anchor(logText.rectTransform, new Vector2(0.025f, 0.02f), new Vector2(0.975f, 0.3f), Vector2.zero, Vector2.zero);
-        logText.horizontalOverflow = HorizontalWrapMode.Wrap;
-    }
-
-    private void BuildIndoorOverlay(RectTransform parent)
-    {
-        indoorRoot = CreatePanel("IndoorOverlay", parent, new Color(0f, 0f, 0f, 0.76f));
-        Anchor(indoorRoot, new Vector2(0.12f, 0.12f), new Vector2(0.88f, 0.88f), Vector2.zero, Vector2.zero);
-        indoorRoot.gameObject.SetActive(false);
-
-        indoorBackground = CreateImage("InteriorBackground", indoorRoot, new Color(0.82f, 0.82f, 0.78f, 1f));
-        Stretch(indoorBackground.rectTransform, new Vector2(14f, 14f), new Vector2(-14f, -14f));
-
-        indoorTitle = CreateText("IndoorTitle", indoorRoot, "", 28, FontStyle.Bold, ink, TextAnchor.UpperLeft);
-        Anchor(indoorTitle.rectTransform, new Vector2(0.05f, 0.86f), new Vector2(0.62f, 0.96f), Vector2.zero, Vector2.zero);
-
-        indoorHint = CreateText("IndoorHint", indoorRoot, "", 18, FontStyle.Normal, muted, TextAnchor.UpperLeft);
-        Anchor(indoorHint.rectTransform, new Vector2(0.05f, 0.75f), new Vector2(0.95f, 0.85f), Vector2.zero, Vector2.zero);
-        indoorHint.horizontalOverflow = HorizontalWrapMode.Wrap;
-
-        RectTransform timeRow = CreatePanel("IndoorTimeBar", indoorRoot, new Color(1f, 1f, 1f, 0.72f));
-        Anchor(timeRow, new Vector2(0.62f, 0.88f), new Vector2(0.86f, 0.95f), Vector2.zero, Vector2.zero);
-
-        indoorTimeSlider = CreateTimeSlider("IndoorTimeSlider", timeRow, delegate(float value)
-        {
-            SetIndoorTime(SliderValueToTime(value));
-        });
-        Anchor(indoorTimeSlider.GetComponent<RectTransform>(), new Vector2(0.08f, 0.38f), new Vector2(0.92f, 0.88f), Vector2.zero, Vector2.zero);
-
-        indoorTimeSliderLabel = CreateText("IndoorTimeSliderLabel", timeRow, "春        战        秋", 11, FontStyle.Bold, muted, TextAnchor.LowerCenter);
-        Anchor(indoorTimeSliderLabel.rectTransform, new Vector2(0f, 0f), new Vector2(1f, 0.42f), Vector2.zero, Vector2.zero);
-
-        Button close = CreateButton("CloseIndoor", indoorRoot, "返回", 16, CloseIndoor);
-        Anchor(close.GetComponent<RectTransform>(), new Vector2(0.87f, 0.885f), new Vector2(0.95f, 0.95f), Vector2.zero, Vector2.zero);
-
-        indoorFireboxDropZone = CreateDropZone(indoorRoot, WhiteboxDropZoneType.Firebox, RegionID.Kitchen, "炉膛\n拖入火箭");
-        Place(indoorFireboxDropZone.GetComponent<RectTransform>(), new Vector2(0.72f, 0.32f), new Vector2(140f, 72f));
-
-        indoorPrepBoardButton = CreateButton("IndoorPrepBoardButton", indoorRoot, "案板\n点击和面", 15, KneadDough);
-        Place(indoorPrepBoardButton.GetComponent<RectTransform>(), new Vector2(0.42f, 0.38f), new Vector2(156f, 82f));
-
-        indoorMoveBreadToDoorButton = CreateButton("IndoorMoveBreadDoor", indoorRoot, "面包移到门口", 15, MoveBreadToKitchenDoor);
-        Place(indoorMoveBreadToDoorButton.GetComponent<RectTransform>(), new Vector2(0.54f, 0.34f), new Vector2(150f, 42f));
-
-        indoorTokenLayer = CreatePanel("IndoorTokenLayer", indoorRoot, Color.clear);
-        Stretch(indoorTokenLayer);
-        indoorTokenLayer.GetComponent<Image>().raycastTarget = false;
-    }
-
-    private void BuildFinalOverlay(RectTransform parent)
-    {
-        finalOverlay = CreatePanel("FinalOverlay", parent, new Color(0f, 0f, 0f, 0.84f));
-        Stretch(finalOverlay);
-        finalOverlay.gameObject.SetActive(false);
-
-        finalText = CreateText("FinalText", finalOverlay, "", 34, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Anchor(finalText.rectTransform, new Vector2(0.16f, 0.34f), new Vector2(0.84f, 0.66f), Vector2.zero, Vector2.zero);
-        finalText.horizontalOverflow = HorizontalWrapMode.Wrap;
+        return WhiteboxCartNodeId.MillRoad;
     }
 
     private void SetRegionTime(RegionID region, TimeState time)
@@ -1165,6 +1233,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         MaybeAutoMillWheat();
         CheckRocketEvent();
         RefreshAll();
+        StartSceneTransitionFade(region);
     }
 
     private void ApplyKitchenTimeConsequence(RegionID region, TimeState time)
@@ -1253,6 +1322,13 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private void TryMoveCartToNode(WhiteboxCartNodeId target)
     {
+        if (!cartNodes.ContainsKey(target) || !cartNodes.ContainsKey(cartNodeId))
+        {
+            AddLog("这个小推车点没有启用。");
+            RefreshAll();
+            return;
+        }
+
         if (girlFed)
         {
             AddLog("结局已完成，小推车停止操作。");
@@ -1318,11 +1394,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
                 {
                     if (boardOverlay != null)
                     {
-                        PlaceOnBoard(cartVisual, position, new Vector2(104f, 64f));
+                        PlaceOnBoard(cartVisual, position, cartVisualSize);
                     }
                     else
                     {
-                        Place(cartVisual, position, new Vector2(104f, 64f));
+                        Place(cartVisual, position, cartVisualSize);
                     }
                 }
 
@@ -1345,7 +1421,25 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private void UpdateCartDirection(WhiteboxCartNodeId from, WhiteboxCartNodeId to)
     {
         Vector2 delta = cartNodes[to].BoardPosition - cartNodes[from].BoardPosition;
-        if (Mathf.Abs(delta.x) >= Mathf.Abs(delta.y))
+        float absX = Mathf.Abs(delta.x);
+        float absY = Mathf.Abs(delta.y);
+        float diagonalThreshold = Mathf.Min(absX, absY) / Mathf.Max(Mathf.Max(absX, absY), 0.0001f);
+
+        if (diagonalThreshold >= 0.35f)
+        {
+            if (delta.y < 0f)
+            {
+                cartDirection = delta.x < 0f ? CartDirection.FrontLeft : CartDirection.FrontRight;
+            }
+            else
+            {
+                cartDirection = delta.x < 0f ? CartDirection.BackLeft : CartDirection.BackRight;
+            }
+
+            return;
+        }
+
+        if (absX >= absY)
         {
             cartDirection = delta.x >= 0f ? CartDirection.Right : CartDirection.Left;
         }
@@ -1432,14 +1526,15 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private bool IsEdgePassable(RoadEdge edge)
     {
-        if (edge.RequiredSpringRegions.Length <= 1)
+        if (IsSameRegionEdge(edge))
         {
             return true;
         }
 
-        for (int i = 0; i < edge.RequiredSpringRegions.Length; i++)
+        RegionID[] requiredRegions = GetRequiredSpringRegions(edge);
+        for (int i = 0; i < requiredRegions.Length; i++)
         {
-            if (regionTimes[edge.RequiredSpringRegions[i]] != TimeState.Spring)
+            if (regionTimes[requiredRegions[i]] != TimeState.Spring)
             {
                 return false;
             }
@@ -1450,10 +1545,16 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private string GetBlockedReason(RoadEdge edge)
     {
-        List<string> blocked = new List<string>();
-        for (int i = 0; i < edge.RequiredSpringRegions.Length; i++)
+        if (IsSameRegionEdge(edge))
         {
-            RegionID region = edge.RequiredSpringRegions[i];
+            return "同一格内部道路可通。";
+        }
+
+        List<string> blocked = new List<string>();
+        RegionID[] requiredRegions = GetRequiredSpringRegions(edge);
+        for (int i = 0; i < requiredRegions.Length; i++)
+        {
+            RegionID region = requiredRegions[i];
             if (regionTimes[region] != TimeState.Spring)
             {
                 blocked.Add(GetRegionName(region) + "=" + GetTimeName(regionTimes[region]));
@@ -1461,6 +1562,34 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
 
         return "路段 " + cartNodes[edge.A].Name + " → " + cartNodes[edge.B].Name + " 需要相关区域都是春天；当前 " + string.Join("、", blocked.ToArray()) + "。";
+    }
+
+    private bool IsSameRegionEdge(RoadEdge edge)
+    {
+        return cartNodes.ContainsKey(edge.A) &&
+            cartNodes.ContainsKey(edge.B) &&
+            cartNodes[edge.A].Region == cartNodes[edge.B].Region;
+    }
+
+    private RegionID[] GetRequiredSpringRegions(RoadEdge edge)
+    {
+        if (edge.RequiredSpringRegions != null && edge.RequiredSpringRegions.Length > 0)
+        {
+            return edge.RequiredSpringRegions;
+        }
+
+        List<RegionID> regions = new List<RegionID>();
+        AddRequiredRegion(regions, cartNodes[edge.A].Region);
+        AddRequiredRegion(regions, cartNodes[edge.B].Region);
+        return regions.ToArray();
+    }
+
+    private void AddRequiredRegion(List<RegionID> regions, RegionID region)
+    {
+        if (!regions.Contains(region))
+        {
+            regions.Add(region);
+        }
     }
 
     private RoadEdge FindEdge(WhiteboxCartNodeId a, WhiteboxCartNodeId b)
@@ -1762,9 +1891,10 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private void OpenIndoor(WhiteboxIndoorRoom room)
     {
         currentIndoorRoom = room;
+        RefreshAll();
         indoorRoot.gameObject.SetActive(true);
         indoorRoot.SetAsLastSibling();
-        StartIndoorFadeIn();
+        StartIndoorFadeIn(0f, 0.28f);
         CheckRocketEvent();
         RefreshAll();
     }
@@ -1778,12 +1908,62 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
+        CloseIndoorImmediately();
+    }
+
+    private void CloseIndoorImmediately()
+    {
+        if (indoorFadeRoutine != null)
+        {
+            StopCoroutine(indoorFadeRoutine);
+            indoorFadeRoutine = null;
+        }
+
         currentIndoorRoom = WhiteboxIndoorRoom.None;
-        indoorRoot.gameObject.SetActive(false);
+        RefreshKitchenDoughAndBreadImages(false);
+        DeactivateCellarBasketDragToken();
+        RemoveTokenOfType(WhiteboxTokenType.Arrow);
+        if (indoorRoot != null)
+        {
+            indoorRoot.gameObject.SetActive(false);
+        }
+
+        CanvasGroup group = GetIndoorCanvasGroup();
+        if (group != null)
+        {
+            group.alpha = 1f;
+        }
+
         RefreshAll();
     }
 
-    private void StartIndoorFadeIn()
+    private IEnumerator CloseIndoorRoutine()
+    {
+        CanvasGroup group = GetIndoorCanvasGroup();
+        if (group != null)
+        {
+            yield return FadeCanvasGroup(group, group.alpha, 0f, 0.2f);
+        }
+
+        currentIndoorRoom = WhiteboxIndoorRoom.None;
+        RefreshKitchenDoughAndBreadImages(false);
+        DeactivateCellarBasketDragToken();
+
+        if (indoorRoot != null)
+        {
+            indoorRoot.gameObject.SetActive(false);
+        }
+
+        if (group != null)
+        {
+            group.alpha = 1f;
+        }
+
+        indoorFadeRoutine = null;
+        RefreshAll();
+    }
+
+    private void StartIndoorFadeIn(float fromAlpha, float duration)
     {
         if (indoorRoot == null)
         {
@@ -1795,13 +1975,25 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             StopCoroutine(indoorFadeRoutine);
         }
 
+        indoorCanvasGroup = GetIndoorCanvasGroup();
+
+        indoorFadeRoutine = StartCoroutine(FadeCanvasGroup(indoorCanvasGroup, fromAlpha, 1f, duration));
+    }
+
+    private CanvasGroup GetIndoorCanvasGroup()
+    {
+        if (indoorRoot == null)
+        {
+            return null;
+        }
+
         indoorCanvasGroup = indoorRoot.GetComponent<CanvasGroup>();
         if (indoorCanvasGroup == null)
         {
             indoorCanvasGroup = indoorRoot.gameObject.AddComponent<CanvasGroup>();
         }
 
-        indoorFadeRoutine = StartCoroutine(FadeCanvasGroup(indoorCanvasGroup, 0f, 1f, 0.28f));
+        return indoorCanvasGroup;
     }
 
     private IEnumerator FadeCanvasGroup(CanvasGroup group, float from, float to, float duration)
@@ -1822,6 +2014,46 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
 
         group.alpha = to;
+    }
+
+    private void StartSceneTransitionFade(RegionID changedRegion)
+    {
+        if (currentIndoorRoom != WhiteboxIndoorRoom.None)
+        {
+            RegionID indoorRegion = currentIndoorRoom == WhiteboxIndoorRoom.Kitchen ? RegionID.Kitchen : RegionID.Cellar;
+            if (changedRegion == indoorRegion && indoorRoot != null && indoorRoot.gameObject.activeInHierarchy)
+            {
+                StartIndoorFadeIn(0.35f, 0.22f);
+            }
+
+            return;
+        }
+
+        RegionView view;
+        if (!regionViews.TryGetValue(changedRegion, out view) || view.Root == null)
+        {
+            return;
+        }
+
+        Coroutine existing;
+        if (regionFadeRoutines.TryGetValue(changedRegion, out existing) && existing != null)
+        {
+            StopCoroutine(existing);
+        }
+
+        CanvasGroup group = view.Root.GetComponent<CanvasGroup>();
+        if (group == null)
+        {
+            group = view.Root.gameObject.AddComponent<CanvasGroup>();
+        }
+
+        regionFadeRoutines[changedRegion] = StartCoroutine(RegionFadeRoutine(changedRegion, group));
+    }
+
+    private IEnumerator RegionFadeRoutine(RegionID region, CanvasGroup group)
+    {
+        yield return FadeCanvasGroup(group, 0.45f, 1f, 0.24f);
+        regionFadeRoutines.Remove(region);
     }
 
     private void CheckRocketEvent()
@@ -1877,33 +2109,24 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         if (currentIndoorRoom != WhiteboxIndoorRoom.Cellar)
         {
-            if (cellarBasketVisual != null)
-            {
-                cellarBasketVisual.gameObject.SetActive(false);
-            }
-
+            SetCellarBasketObjectsActive(false, false);
             DeactivateCellarBasketDragToken();
             return;
         }
 
         EnsureCellarBasketVisual();
-        if (cellarBasketVisual == null || cellarBasketImage == null)
-        {
-            return;
-        }
-
         bool hasBread = breadAtCellarEntrance && !girlFed;
         bool canDrag = hasBread && regionTimes[RegionID.Cellar] == TimeState.War;
-        cellarBasketVisual.gameObject.SetActive(true);
-        ApplyCellarBasketSprite(cellarBasketImage, hasBread);
-        cellarBasketImage.raycastTarget = canDrag;
 
-        if (cellarBasketText != null)
+        SetCellarBasketObjectsActive(!hasBread, hasBread);
+        if (cellarEmptyBasketImage != null)
         {
-            bool hasSprite = hasBread ? cellarBasketBreadSprite != null : cellarBasketEmptySprite != null;
-            cellarBasketText.text = hasBread ? "装面包篮子\n拖给女孩" : "空篮子";
-            cellarBasketText.raycastTarget = false;
-            cellarBasketText.gameObject.SetActive(!hasSprite);
+            cellarEmptyBasketImage.raycastTarget = false;
+        }
+
+        if (cellarBreadBasketImage != null)
+        {
+            cellarBreadBasketImage.raycastTarget = canDrag;
         }
 
         if (canDrag)
@@ -1919,45 +2142,42 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private void EnsureCellarBasketVisual()
     {
         SyncCellarHierarchyReferences();
-        if (cellarBasketVisual != null && cellarBasketImage != null)
+    }
+
+    private void SetCellarBasketObjectsActive(bool emptyActive, bool breadActive)
+    {
+        if (cellarEmptyBasketVisual != null)
         {
-            return;
+            cellarEmptyBasketVisual.gameObject.SetActive(emptyActive);
         }
 
-        EnsureRuntimeMarker(
-            ref cellarBasketVisual,
-            ref cellarBasketText,
-            "CellarBasket",
-            new Vector2(0.34f, 0.47f),
-            new Vector2(136f, 150f),
-            new Color(0.72f, 0.76f, 0.82f, 0.72f));
-
-        if (cellarBasketVisual != null)
+        if (cellarBreadBasketVisual != null)
         {
-            cellarBasketImage = cellarBasketVisual.GetComponent<Image>();
+            cellarBreadBasketVisual.gameObject.SetActive(breadActive);
         }
     }
 
     private void ActivateCellarBasketDragToken()
     {
-        if (cellarBasketVisual == null)
+        RectTransform basketVisual = GetDraggableCellarBasketVisual();
+        if (basketVisual == null)
         {
             return;
         }
 
-        CanvasGroup group = cellarBasketVisual.GetComponent<CanvasGroup>();
+        CanvasGroup group = basketVisual.GetComponent<CanvasGroup>();
         if (group == null)
         {
-            group = cellarBasketVisual.gameObject.AddComponent<CanvasGroup>();
+            group = basketVisual.gameObject.AddComponent<CanvasGroup>();
         }
 
         group.blocksRaycasts = true;
         group.interactable = true;
 
-        WhiteboxDraggableToken token = cellarBasketVisual.GetComponent<WhiteboxDraggableToken>();
+        WhiteboxDraggableToken token = basketVisual.GetComponent<WhiteboxDraggableToken>();
         if (token == null)
         {
-            token = cellarBasketVisual.gameObject.AddComponent<WhiteboxDraggableToken>();
+            token = basketVisual.gameObject.AddComponent<WhiteboxDraggableToken>();
         }
 
         token.Initialize(this, WhiteboxTokenType.Bread, RegionID.Cellar, false);
@@ -1970,89 +2190,40 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private void DeactivateCellarBasketDragToken()
     {
-        if (cellarBasketVisual == null)
+        RectTransform basketVisual = GetDraggableCellarBasketVisual();
+        if (basketVisual == null)
         {
             return;
         }
 
-        WhiteboxDraggableToken token = cellarBasketVisual.GetComponent<WhiteboxDraggableToken>();
+        WhiteboxDraggableToken token = basketVisual.GetComponent<WhiteboxDraggableToken>();
         if (token != null)
         {
             activeTokens.Remove(token);
             token.DisablePersistentToken();
         }
 
-        CanvasGroup group = cellarBasketVisual.GetComponent<CanvasGroup>();
+        CanvasGroup group = basketVisual.GetComponent<CanvasGroup>();
         if (group != null)
         {
             group.blocksRaycasts = false;
         }
     }
 
-    private void ApplyCellarBasketSprite(Image image, bool hasBread)
+    private RectTransform GetDraggableCellarBasketVisual()
     {
-        if (image == null)
-        {
-            return;
-        }
-
-        Sprite sprite = hasBread ? cellarBasketBreadSprite : cellarBasketEmptySprite;
-        if (sprite != null)
-        {
-            image.sprite = sprite;
-            image.color = Color.white;
-            image.preserveAspect = true;
-            image.raycastTarget = hasBread;
-        }
-        else
-        {
-            image.sprite = null;
-            image.color = hasBread ? new Color(0.92f, 0.62f, 0.26f, 0.96f) : new Color(0.72f, 0.76f, 0.82f, 0.72f);
-            image.raycastTarget = hasBread;
-        }
+        return cellarBreadBasketVisual;
     }
 
     private void RefreshKitchenIndoorTokens()
     {
-        if (currentIndoorRoom != WhiteboxIndoorRoom.Kitchen)
-        {
-            RemoveIndoorTokenOfType(WhiteboxTokenType.Flour);
-            RemoveIndoorTokenOfType(WhiteboxTokenType.Water);
-            RemoveIndoorTokenOfType(WhiteboxTokenType.Dough);
-            return;
-        }
+        RemoveIndoorRuntimeTokenOfType(WhiteboxTokenType.Flour);
+        RemoveIndoorRuntimeTokenOfType(WhiteboxTokenType.Water);
+        RemoveIndoorRuntimeTokenOfType(WhiteboxTokenType.Dough);
 
-        RectTransform parent = indoorTokenLayer != null ? indoorTokenLayer : indoorRoot;
-        if (parent == null)
+        if (currentIndoorRoom == WhiteboxIndoorRoom.Kitchen)
         {
-            return;
-        }
-
-        if (flourAtKitchenDoor && FindIndoorToken(WhiteboxTokenType.Flour) == null)
-        {
-            SpawnToken(WhiteboxTokenType.Flour, RegionID.Kitchen, parent, "门口面粉\n拖到案板", new Color(0.98f, 0.93f, 0.78f, 0.96f), new Vector2(0.2f, 0.28f));
-        }
-
-        if (waterAtKitchenDoor && FindIndoorToken(WhiteboxTokenType.Water) == null)
-        {
-            SpawnToken(WhiteboxTokenType.Water, RegionID.Kitchen, parent, "门口清水\n拖到案板", new Color(0.52f, 0.75f, 0.95f, 0.96f), new Vector2(0.34f, 0.28f));
-        }
-
-        if ((kitchenProcess == KitchenProcessState.DoughMixed ||
-             kitchenProcess == KitchenProcessState.DoughFermented ||
-             kitchenProcess == KitchenProcessState.DoughMolded) &&
-            FindIndoorToken(WhiteboxTokenType.Dough) == null)
-        {
-            string label = kitchenProcess == KitchenProcessState.DoughFermented ? "发酵面团\n拖到烤炉" :
-                kitchenProcess == KitchenProcessState.DoughMolded ? "发霉面团" : "生面团\n等待发酵";
-            SpawnToken(WhiteboxTokenType.Dough, RegionID.Kitchen, parent, label, new Color(0.86f, 0.76f, 0.56f, 0.96f), new Vector2(0.54f, 0.28f));
-        }
-
-        if (kitchenProcess != KitchenProcessState.DoughMixed &&
-            kitchenProcess != KitchenProcessState.DoughFermented &&
-            kitchenProcess != KitchenProcessState.DoughMolded)
-        {
-            RemoveIndoorTokenOfType(WhiteboxTokenType.Dough);
+            RefreshKitchenIngredientImages(true);
         }
     }
 
@@ -2092,30 +2263,54 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         bakeRoutine = null;
     }
 
-    private void MoveBreadToKitchenDoor()
+    private bool MoveBreadToKitchenDoor(WhiteboxDraggableToken token, bool showLog = true)
     {
         if (currentIndoorRoom != WhiteboxIndoorRoom.Kitchen)
         {
-            AddLog("需要在厨房内部把面包移到门口。");
-            return;
+            if (showLog)
+            {
+                AddLog("需要在厨房内部把面包拖到门口。");
+            }
+
+            return false;
         }
 
         if (kitchenProcess == KitchenProcessState.BreadAtDoor)
         {
-            AddLog("面包已经在厨房门口。");
-            return;
+            if (showLog)
+            {
+                AddLog("面包已经在厨房门口。");
+            }
+
+            return false;
         }
 
         if (kitchenProcess != KitchenProcessState.BreadReady)
         {
-            AddLog("面包还没有出炉。");
-            return;
+            if (showLog)
+            {
+                AddLog("面包还没有出炉。");
+            }
+
+            return false;
+        }
+
+        if (token == null || token.TokenType != WhiteboxTokenType.Bread || token.SourceRegion != RegionID.Kitchen)
+        {
+            if (showLog)
+            {
+                AddLog("把出炉面包图片拖到厨房门口投放区，才能送出厨房。");
+            }
+
+            return false;
         }
 
         kitchenProcess = KitchenProcessState.BreadAtDoor;
-        SpawnBreadTokenIfMissing(RegionID.Kitchen, regionViews[RegionID.Kitchen].TokenLayer, new Vector2(0.52f, 0.36f), "门口面包\n拖到推车");
+        ConsumeToken(token);
+        SpawnBreadTokenIfMissing(RegionID.Kitchen, GetOutdoorTokenParent(RegionID.Kitchen), new Vector2(0.52f, 0.36f), "门口面包\n拖到推车");
         AddLog("面包移到厨房门口。把小推车推到门口后拖上车。");
         RefreshAll();
+        return true;
     }
 
     public bool TryDropToken(WhiteboxDraggableToken token, PointerEventData eventData)
@@ -2171,6 +2366,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             if (token.TokenType == WhiteboxTokenType.Dough)
             {
                 return indoorOvenDropZone != null ? indoorOvenDropZone : indoorFireboxDropZone;
+            }
+
+            if (token.TokenType == WhiteboxTokenType.Bread)
+            {
+                return indoorKitchenDoorDropZone;
             }
         }
 
@@ -2300,6 +2500,21 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private bool DropTokenToKitchenDoor(WhiteboxDraggableToken token, bool showLog = true)
     {
+        if (currentIndoorRoom == WhiteboxIndoorRoom.Kitchen)
+        {
+            if (token.TokenType == WhiteboxTokenType.Bread)
+            {
+                return MoveBreadToKitchenDoor(token, showLog);
+            }
+
+            if (showLog)
+            {
+                AddLog("厨房内部的门口只接收出炉面包。");
+            }
+
+            return false;
+        }
+
         if (currentIndoorRoom != WhiteboxIndoorRoom.None)
         {
             AddLog("先退出室内视角，再把货物拖到厨房门口。");
@@ -2683,12 +2898,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private void EnsureFinalOverlayControls()
     {
-        if (finalOverlay == null && root != null)
-        {
-            finalOverlay = CreatePanel("FinalOverlay", root, new Color(0f, 0f, 0f, 0.84f));
-            Stretch(finalOverlay);
-        }
-
         if (finalOverlay == null)
         {
             return;
@@ -2700,29 +2909,12 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             finalCanvasGroup = finalOverlay.gameObject.AddComponent<CanvasGroup>();
         }
 
-        if (finalText == null)
-        {
-            finalText = CreateText("FinalText", finalOverlay, "", 34, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-            Anchor(finalText.rectTransform, new Vector2(0.16f, 0.38f), new Vector2(0.84f, 0.7f), Vector2.zero, Vector2.zero);
-            finalText.horizontalOverflow = HorizontalWrapMode.Wrap;
-        }
-
-        if (finalRestartButton == null)
-        {
-            finalRestartButton = CreateButton("FinalRestartButton", finalOverlay, "重新玩", 20, ResetPrototype);
-            Anchor(finalRestartButton.GetComponent<RectTransform>(), new Vector2(0.32f, 0.18f), new Vector2(0.48f, 0.27f), Vector2.zero, Vector2.zero);
-        }
-        else
+        if (finalRestartButton != null)
         {
             BindButton(finalRestartButton, ResetPrototype);
         }
 
-        if (finalQuitButton == null)
-        {
-            finalQuitButton = CreateButton("FinalQuitButton", finalOverlay, "退出", 20, QuitGame);
-            Anchor(finalQuitButton.GetComponent<RectTransform>(), new Vector2(0.52f, 0.18f), new Vector2(0.68f, 0.27f), Vector2.zero, Vector2.zero);
-        }
-        else
+        if (finalQuitButton != null)
         {
             BindButton(finalQuitButton, QuitGame);
         }
@@ -2761,7 +2953,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             if (activeTokens[i] != null)
             {
-                Destroy(activeTokens[i].gameObject);
+                DisposeToken(activeTokens[i]);
             }
         }
 
@@ -2850,6 +3042,38 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         return null;
     }
 
+    public Sprite GetDragTokenSprite(WhiteboxTokenType tokenType)
+    {
+        return GetTokenSprite(tokenType);
+    }
+
+    public Color GetDragTokenFallbackColor(WhiteboxTokenType tokenType)
+    {
+        if (tokenType == WhiteboxTokenType.Wheat) return new Color(0.95f, 0.74f, 0.25f, 0.96f);
+        if (tokenType == WhiteboxTokenType.Flour) return new Color(0.98f, 0.93f, 0.78f, 0.96f);
+        if (tokenType == WhiteboxTokenType.Water) return new Color(0.52f, 0.75f, 0.95f, 0.96f);
+        if (tokenType == WhiteboxTokenType.Arrow) return new Color(1f, 0.3f, 0.12f, 0.96f);
+        if (tokenType == WhiteboxTokenType.Dough) return new Color(0.92f, 0.82f, 0.58f, 0.96f);
+        if (tokenType == WhiteboxTokenType.Bread) return new Color(0.92f, 0.52f, 0.18f, 0.96f);
+        return new Color(1f, 1f, 1f, 0.86f);
+    }
+
+    public string GetDragTokenLabel(WhiteboxTokenType tokenType)
+    {
+        if (tokenType == WhiteboxTokenType.Wheat) return "麦子";
+        if (tokenType == WhiteboxTokenType.Flour) return "面粉";
+        if (tokenType == WhiteboxTokenType.Water) return "清水";
+        if (tokenType == WhiteboxTokenType.Arrow) return "火箭";
+        if (tokenType == WhiteboxTokenType.Dough) return "面团";
+        if (tokenType == WhiteboxTokenType.Bread) return "面包";
+        return tokenType.ToString();
+    }
+
+    public bool IsCartCargoVisual(Transform target)
+    {
+        return cartVisual != null && target == cartVisual;
+    }
+
 
     private void SpawnBreadTokenIfMissing(RegionID sourceRegion, RectTransform parent, Vector2 position, string label)
     {
@@ -2860,6 +3084,22 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
 
         SpawnToken(WhiteboxTokenType.Bread, sourceRegion, parent, label, new Color(0.92f, 0.52f, 0.18f, 0.96f), position);
+    }
+
+    private RectTransform GetOutdoorTokenParent(RegionID region)
+    {
+        RegionView view;
+        if (regionViews.TryGetValue(region, out view) && view.TokenLayer != null)
+        {
+            return view.TokenLayer;
+        }
+
+        if (boardOverlay != null)
+        {
+            return boardOverlay;
+        }
+
+        return root;
     }
 
     private WhiteboxDraggableToken FindToken(WhiteboxTokenType tokenType)
@@ -2895,6 +3135,23 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             WhiteboxDraggableToken token = activeTokens[i];
             if (token != null && token.TokenType == tokenType && indoorRoot != null && token.transform.IsChildOf(indoorRoot))
+            {
+                activeTokens.RemoveAt(i);
+                DisposeToken(token);
+            }
+        }
+    }
+
+    private void RemoveIndoorRuntimeTokenOfType(WhiteboxTokenType tokenType)
+    {
+        for (int i = activeTokens.Count - 1; i >= 0; i--)
+        {
+            WhiteboxDraggableToken token = activeTokens[i];
+            if (token != null &&
+                token.DestroyOnConsume &&
+                token.TokenType == tokenType &&
+                indoorRoot != null &&
+                token.transform.IsChildOf(indoorRoot))
             {
                 activeTokens.RemoveAt(i);
                 DisposeToken(token);
@@ -2976,11 +3233,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             }
         }
 
-        if (view.TimeOverlay != null)
-        {
-            view.TimeOverlay.color = GetTimeOverlay(view.Region, time);
-        }
-
         if (view.Title != null)
         {
             view.Title.text = GetRegionTitle(view.Region);
@@ -3009,14 +3261,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private bool HasRegionBackgroundSprites(RegionView view)
     {
         return view.SpringBackground != null || view.WarBackground != null || view.AutumnBackground != null;
-    }
-
-
-    private Color GetTimeOverlay(RegionID region, TimeState time)
-    {
-        if (time == TimeState.Spring) return spring;
-        if (time == TimeState.War) return war;
-        return autumn;
     }
 
     private void SetActiveIfNotNull(Component component, bool active)
@@ -3068,6 +3312,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private void RefreshCart()
     {
+        if (!cartNodes.ContainsKey(cartNodeId))
+        {
+            cartNodeId = GetFirstAvailableCartNode();
+        }
+
         if (cartDropZone != null)
         {
             cartDropZone.Initialize(this, WhiteboxDropZoneType.Cart, GetCartRegion());
@@ -3077,11 +3326,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             if (boardOverlay != null)
             {
-                PlaceOnBoard(cartVisual, cartNodes[cartNodeId].BoardPosition, new Vector2(104f, 64f));
+                PlaceOnBoard(cartVisual, cartNodes[cartNodeId].BoardPosition, cartVisualSize);
             }
             else
             {
-                Place(cartVisual, cartNodes[cartNodeId].BoardPosition, new Vector2(104f, 64f));
+                Place(cartVisual, cartNodes[cartNodeId].BoardPosition, cartVisualSize);
             }
 
             cartVisual.SetAsLastSibling();
@@ -3127,15 +3376,40 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             {
                 return moveSprite;
             }
+
+            Sprite movingDirectionSprite = FindCartDirectionSprite(cartCargo, cartDirection);
+            if (movingDirectionSprite != null)
+            {
+                return movingDirectionSprite;
+            }
+
+            return GetCargoCartSprite(cartCargo);
         }
 
-        Sprite pointSprite = FindCartPointSprite(cartNodeId, cartCargo, cartDirection);
+        Sprite pointSprite = FindCartPointSprite(cartNodeId, cartCargo, GetCartPointDirection());
         if (pointSprite != null)
         {
             return pointSprite;
         }
 
+        Sprite directionSprite = FindCartDirectionSprite(cartCargo, GetCartPointDirection());
+        if (directionSprite != null)
+        {
+            return directionSprite;
+        }
+
         return GetCargoCartSprite(cartCargo);
+    }
+
+    private CartDirection GetCartPointDirection()
+    {
+        CartNode node;
+        if (cartNodes.TryGetValue(cartNodeId, out node) && node.UseFacingOverride)
+        {
+            return node.FacingOverride;
+        }
+
+        return cartDirection;
     }
 
     private Sprite FindCartPointSprite(WhiteboxCartNodeId node, CartCargo cargo, CartDirection direction)
@@ -3153,6 +3427,29 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             CartNodeSpriteBinding binding = cartPointSprites[i];
             if (binding != null && binding.Node == node && binding.Cargo == cargo && binding.Sprite != null)
+            {
+                return binding.Sprite;
+            }
+        }
+
+        return null;
+    }
+
+    private Sprite FindCartDirectionSprite(CartCargo cargo, CartDirection direction)
+    {
+        for (int i = 0; i < cartDirectionSprites.Count; i++)
+        {
+            CartDirectionSpriteBinding binding = cartDirectionSprites[i];
+            if (binding != null && binding.Cargo == cargo && binding.Direction == direction && binding.Sprite != null)
+            {
+                return binding.Sprite;
+            }
+        }
+
+        for (int i = 0; i < cartDirectionSprites.Count; i++)
+        {
+            CartDirectionSpriteBinding binding = cartDirectionSprites[i];
+            if (binding != null && binding.Cargo == CartCargo.Empty && binding.Direction == direction && binding.Sprite != null)
             {
                 return binding.Sprite;
             }
@@ -3197,62 +3494,61 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private void SyncCartCargoToken()
     {
         WhiteboxTokenType expectedType;
-        string label;
 
-        if (cartVisual == null || !TryGetCartCargoTokenInfo(out expectedType, out label))
+        if (cartVisual == null || !TryGetCartCargoTokenInfo(out expectedType))
         {
             RemoveCartCargoToken();
             return;
         }
 
-        if (cartCargoToken != null && cartCargoToken.TokenType == expectedType)
+        CanvasGroup group = cartVisual.GetComponent<CanvasGroup>();
+        if (group == null)
         {
-            if (cartCargoToken.transform.parent != cartVisual)
-            {
-                cartCargoToken.transform.SetParent(cartVisual, false);
-            }
-
-            Place((RectTransform)cartCargoToken.transform, new Vector2(0.5f, 0.5f), new Vector2(84f, 42f));
-            cartCargoToken.transform.SetAsLastSibling();
-            return;
+            group = cartVisual.gameObject.AddComponent<CanvasGroup>();
         }
 
-        RemoveCartCargoToken();
-        cartCargoToken = SpawnToken(expectedType, GetCartRegion(), cartVisual, label, GetCartColor(), new Vector2(0.5f, 0.5f));
-        Place((RectTransform)cartCargoToken.transform, new Vector2(0.5f, 0.5f), new Vector2(84f, 42f));
-        cartCargoToken.transform.SetAsLastSibling();
+        group.blocksRaycasts = true;
+        group.interactable = true;
+
+        cartCargoToken = cartVisual.GetComponent<WhiteboxDraggableToken>();
+        if (cartCargoToken == null)
+        {
+            cartCargoToken = cartVisual.gameObject.AddComponent<WhiteboxDraggableToken>();
+        }
+
+        cartCargoToken.Initialize(this, expectedType, GetCartRegion(), false);
+        cartCargoToken.enabled = true;
+        if (!activeTokens.Contains(cartCargoToken))
+        {
+            activeTokens.Add(cartCargoToken);
+        }
     }
 
-    private bool TryGetCartCargoTokenInfo(out WhiteboxTokenType tokenType, out string label)
+    private bool TryGetCartCargoTokenInfo(out WhiteboxTokenType tokenType)
     {
         tokenType = WhiteboxTokenType.Wheat;
-        label = "";
 
         if (cartCargo == CartCargo.Flour)
         {
             tokenType = WhiteboxTokenType.Flour;
-            label = "面粉\n拖到门口";
             return true;
         }
 
         if (cartCargo == CartCargo.Wheat)
         {
             tokenType = WhiteboxTokenType.Wheat;
-            label = "麦子\n运到磨坊";
             return true;
         }
 
         if (cartCargo == CartCargo.Water)
         {
             tokenType = WhiteboxTokenType.Water;
-            label = "清水\n拖到门口";
             return true;
         }
 
         if (cartCargo == CartCargo.Bread)
         {
             tokenType = WhiteboxTokenType.Bread;
-            label = "面包\n拖到入口";
             return true;
         }
 
@@ -3267,7 +3563,15 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
 
         activeTokens.Remove(cartCargoToken);
-        Destroy(cartCargoToken.gameObject);
+        if (cartCargoToken.transform == cartVisual)
+        {
+            cartCargoToken.DisablePersistentToken();
+        }
+        else
+        {
+            Destroy(cartCargoToken.gameObject);
+        }
+
         cartCargoToken = null;
     }
 
@@ -3280,25 +3584,71 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
                 continue;
             }
 
-            Image image = node.Button.GetComponent<Image>();
-            if (image != null)
-            {
-                if (node.Id == cartNodeId)
-                {
-                    image.color = new Color(0.2f, 0.62f, 1f, 0.86f);
-                }
-                else if (FindPath(cartNodeId, node.Id, true) != null)
-                {
-                    image.color = new Color(0.45f, 0.9f, 0.5f, 0.66f);
-                }
-                else
-                {
-                    image.color = new Color(1f, 1f, 1f, 0.46f);
-                }
-            }
-
             node.Button.interactable = !cartMoving && currentIndoorRoom == WhiteboxIndoorRoom.None && !girlFed;
         }
+    }
+
+    private void UpdateCartPointBlink()
+    {
+        if (!blinkReachableCartPoints || !cartNodes.ContainsKey(cartNodeId))
+        {
+            ResetCartPointBlinkAlpha();
+            return;
+        }
+
+        bool canShowHint = currentIndoorRoom == WhiteboxIndoorRoom.None && !cartMoving && !girlFed;
+        float speed = Mathf.Max(0.1f, reachablePointBlinkSpeed);
+        float minAlpha = Mathf.Clamp01(reachablePointMinAlpha);
+        float pulse = (Mathf.Sin(Time.unscaledTime * speed) + 1f) * 0.5f;
+        float blinkAlpha = Mathf.Lerp(minAlpha, 1f, pulse);
+
+        foreach (CartNode node in cartNodes.Values)
+        {
+            CanvasGroup group = GetCartPointCanvasGroup(node);
+            if (group == null)
+            {
+                continue;
+            }
+
+            bool reachable = canShowHint &&
+                node.Id != cartNodeId &&
+                FindPath(cartNodeId, node.Id, true) != null;
+
+            group.alpha = reachable ? node.ButtonBaseAlpha * blinkAlpha : node.ButtonBaseAlpha;
+        }
+    }
+
+    private void ResetCartPointBlinkAlpha()
+    {
+        foreach (CartNode node in cartNodes.Values)
+        {
+            CanvasGroup group = GetCartPointCanvasGroup(node);
+            if (group != null)
+            {
+                group.alpha = node.ButtonBaseAlpha;
+            }
+        }
+    }
+
+    private CanvasGroup GetCartPointCanvasGroup(CartNode node)
+    {
+        if (node == null || node.Button == null)
+        {
+            return null;
+        }
+
+        if (node.ButtonCanvasGroup == null)
+        {
+            node.ButtonCanvasGroup = node.Button.GetComponent<CanvasGroup>();
+            if (node.ButtonCanvasGroup == null)
+            {
+                node.ButtonCanvasGroup = node.Button.gameObject.AddComponent<CanvasGroup>();
+            }
+
+            node.ButtonBaseAlpha = node.ButtonCanvasGroup.alpha;
+        }
+
+        return node.ButtonCanvasGroup;
     }
 
 
@@ -3307,7 +3657,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         if (statusText != null)
         {
             statusText.text =
-                "位置：" + cartNodes[cartNodeId].Name +
+                "位置：" + (cartNodes.ContainsKey(cartNodeId) ? cartNodes[cartNodeId].Name : "未设置") +
                 " / " + GetCargoName(cartCargo) +
                 "    厨房：" + GetKitchenStatus();
         }
@@ -3364,7 +3714,12 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         RegionID region = kitchen ? RegionID.Kitchen : RegionID.Cellar;
         TimeState time = regionTimes[region];
         DeactivateLegacyIndoorControls();
-        SetKitchenOnlyNamedObjects(kitchen);
+        RefreshIndoorRoomRoots(kitchen);
+        if (kitchenIndoorRoot == null)
+        {
+            SetKitchenOnlyNamedObjects(kitchen);
+        }
+
         HideLegacyCellarDeliveryObjects();
 
         if (indoorTitle != null)
@@ -3372,23 +3727,9 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             indoorTitle.text = kitchen ? "厨房内部 C" : "地窖内部 B";
         }
 
-        if (indoorBackground != null)
-        {
-            Sprite indoorSprite = GetIndoorBackgroundSprite(kitchen, time);
-            if (indoorSprite != null)
-            {
-                indoorBackground.sprite = indoorSprite;
-                indoorBackground.color = Color.white;
-                indoorBackground.preserveAspect = true;
-            }
-            else
-            {
-                indoorBackground.sprite = null;
-                indoorBackground.color = kitchen
-                    ? (ovenLit ? new Color(0.92f, 0.62f, 0.34f, 1f) : new Color(0.7f, 0.72f, 0.76f, 1f))
-                    : (time == TimeState.War ? new Color(0.28f, 0.31f, 0.38f, 1f) : new Color(0.62f, 0.58f, 0.5f, 1f));
-            }
-        }
+        RefreshIndoorBackground(kitchen, time);
+        RefreshIndoorSeasonFilter(kitchen, time);
+        BringIndoorControlsToFront();
 
         if (indoorHint != null)
         {
@@ -3407,20 +3748,20 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         SetActiveIfNotNull(indoorFireboxDropZone, kitchen);
         SetActiveIfNotNull(indoorPrepBoardDropZone, kitchen);
         SetActiveIfNotNull(indoorOvenDropZone, kitchen);
-        if (kitchen)
+        SetActiveIfNotNull(indoorKitchenDoorDropZone, kitchen);
+        if (kitchen && cellarIndoorRoot == null)
         {
             HideCellarOnlyNamedObjectsInKitchen();
         }
 
         RefreshIndoorMarkers(kitchen, time);
         RefreshCellarBasketVisual();
+        RefreshKitchenWindowPatch(kitchen, time);
         RefreshKitchenObjectImages(kitchen);
 
         SetButtonActive(closeIndoorButton, !girlFed);
-        SetButtonActive(indoorMoveBreadToDoorButton, kitchen);
         SetButtonActive(indoorPrepBoardButton, kitchen);
 
-        SetButtonInteractable(indoorMoveBreadToDoorButton, kitchen && kitchenProcess == KitchenProcessState.BreadReady);
         SetButtonInteractable(indoorPrepBoardButton, kitchen && time == TimeState.Spring && kitchenProcess == KitchenProcessState.WaterAdded);
 
         RefreshTimeSlider(indoorTimeSlider, indoorTimeSliderLabel, time);
@@ -3444,24 +3785,97 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
     }
 
-    private Sprite GetIndoorBackgroundSprite(bool kitchen, TimeState time)
+    private void RefreshIndoorBackground(bool kitchen, TimeState time)
     {
-        if (kitchen)
+        RefreshIndoorRoomRoots(kitchen);
+
+        if (kitchenIndoorBackgroundImage != null)
         {
-            if (time == TimeState.Spring) return kitchenIndoorSpringSprite;
-            if (time == TimeState.War) return kitchenIndoorWarSprite;
-            return kitchenIndoorAutumnSprite;
+            kitchenIndoorBackgroundImage.gameObject.SetActive(kitchen);
+            kitchenIndoorBackgroundImage.raycastTarget = false;
         }
 
-        if (time == TimeState.Spring) return cellarIndoorSpringSprite;
-        if (time == TimeState.War) return cellarIndoorWarSprite;
-        return cellarIndoorAutumnSprite;
+        if (cellarIndoorBackgroundImage != null)
+        {
+            cellarIndoorBackgroundImage.gameObject.SetActive(!kitchen);
+            cellarIndoorBackgroundImage.raycastTarget = false;
+        }
+    }
+
+    private void RefreshIndoorRoomRoots(bool kitchen)
+    {
+        if (kitchenIndoorRoot != null)
+        {
+            kitchenIndoorRoot.gameObject.SetActive(kitchen);
+        }
+
+        if (cellarIndoorRoot != null)
+        {
+            cellarIndoorRoot.gameObject.SetActive(!kitchen);
+        }
+    }
+
+    private void BringIndoorControlsToFront()
+    {
+        if (indoorTokenLayer != null)
+        {
+            indoorTokenLayer.SetAsLastSibling();
+        }
+
+        BringTransformToFront(indoorTitle != null ? indoorTitle.transform : null);
+        BringTransformToFront(indoorHint != null ? indoorHint.transform : null);
+        BringTransformToFront(indoorTimeSlider != null ? indoorTimeSlider.transform.parent : null);
+        BringTransformToFront(closeIndoorButton != null ? closeIndoorButton.transform : null);
+    }
+
+    private void BringTransformToFront(Transform target)
+    {
+        if (target != null)
+        {
+            target.SetAsLastSibling();
+        }
+    }
+
+    private void RefreshIndoorSeasonFilter(bool kitchen, TimeState time)
+    {
+        Image kitchenFilter = kitchenIndoorSeasonFilterImage;
+        Image cellarFilter = cellarIndoorSeasonFilterImage;
+
+        if (kitchenFilter != null)
+        {
+            kitchenFilter.gameObject.SetActive(kitchen);
+            if (kitchen)
+            {
+                kitchenFilter.color = GetIndoorSeasonFilterColor(time);
+                kitchenFilter.raycastTarget = false;
+            }
+        }
+
+        if (cellarFilter != null)
+        {
+            cellarFilter.gameObject.SetActive(!kitchen);
+            if (!kitchen)
+            {
+                cellarFilter.color = GetIndoorSeasonFilterColor(time);
+                cellarFilter.raycastTarget = false;
+            }
+        }
+    }
+
+    private Color GetIndoorSeasonFilterColor(TimeState time)
+    {
+        if (time == TimeState.Spring) return indoorSpringFilterColor;
+        if (time == TimeState.War) return indoorWarFilterColor;
+        return indoorAutumnFilterColor;
     }
 
     private void RefreshKitchenObjectImages(bool kitchen)
     {
         SetImageActive(indoorPrepBoardImage, kitchen);
         SetImageActive(indoorOvenImage, kitchen);
+        RefreshKitchenFireImage(kitchen);
+        RefreshKitchenIngredientImages(kitchen);
+        RefreshKitchenDoughAndBreadImages(kitchen);
 
         if (!kitchen)
         {
@@ -3470,6 +3884,138 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         ApplyOptionalImage(indoorPrepBoardImage, GetPrepBoardSprite());
         ApplyOptionalImage(indoorOvenImage, GetOvenSprite());
+    }
+
+    private void RefreshKitchenIngredientImages(bool kitchen)
+    {
+        bool showFlour = kitchen && flourAtKitchenDoor;
+        bool showWater = kitchen && waterAtKitchenDoor;
+
+        SetKitchenPersistentObject(kitchenDoorFlourImage, WhiteboxTokenType.Flour, showFlour, showFlour);
+        SetKitchenPersistentObject(kitchenDoorWaterImage, WhiteboxTokenType.Water, showWater, showWater);
+    }
+
+    private void RefreshKitchenDoughAndBreadImages(bool kitchen)
+    {
+        bool showRawDough = kitchen && kitchenProcess == KitchenProcessState.DoughMixed;
+        bool showFermentedDough = kitchen && kitchenProcess == KitchenProcessState.DoughFermented;
+        bool showMoldedDough = kitchen && kitchenProcess == KitchenProcessState.DoughMolded;
+        bool showBreadReady = kitchen && kitchenProcess == KitchenProcessState.BreadReady;
+
+        SetKitchenPersistentObject(kitchenRawDoughImage, WhiteboxTokenType.Dough, showRawDough, false);
+        SetKitchenPersistentObject(kitchenFermentedDoughImage, WhiteboxTokenType.Dough, showFermentedDough, true);
+        SetKitchenPersistentObject(kitchenMoldedDoughImage, WhiteboxTokenType.Dough, showMoldedDough, false);
+        SetKitchenPersistentObject(kitchenBreadReadyImage, WhiteboxTokenType.Bread, showBreadReady, true);
+    }
+
+    private void SetKitchenPersistentObject(Image image, WhiteboxTokenType tokenType, bool visible, bool draggable)
+    {
+        if (image == null)
+        {
+            return;
+        }
+
+        image.gameObject.SetActive(visible);
+        image.raycastTarget = visible && draggable;
+
+        if (!visible || !draggable)
+        {
+            DeactivatePersistentDragToken(image.rectTransform);
+            return;
+        }
+
+        CanvasGroup group = image.GetComponent<CanvasGroup>();
+        if (group == null)
+        {
+            group = image.gameObject.AddComponent<CanvasGroup>();
+        }
+
+        group.blocksRaycasts = true;
+        group.interactable = true;
+
+        WhiteboxDraggableToken token = image.GetComponent<WhiteboxDraggableToken>();
+        if (token == null)
+        {
+            token = image.gameObject.AddComponent<WhiteboxDraggableToken>();
+        }
+
+        token.Initialize(this, tokenType, RegionID.Kitchen, false);
+        token.enabled = true;
+        if (!activeTokens.Contains(token))
+        {
+            activeTokens.Add(token);
+        }
+    }
+
+    private void DeactivatePersistentDragToken(RectTransform visual)
+    {
+        if (visual == null)
+        {
+            return;
+        }
+
+        WhiteboxDraggableToken token = visual.GetComponent<WhiteboxDraggableToken>();
+        if (token != null)
+        {
+            activeTokens.Remove(token);
+            token.DisablePersistentToken();
+        }
+
+        CanvasGroup group = visual.GetComponent<CanvasGroup>();
+        if (group != null)
+        {
+            group.blocksRaycasts = false;
+        }
+    }
+
+    private void RefreshKitchenFireImage(bool kitchen)
+    {
+        SetImageActive(kitchenFireImage, kitchen && ovenLit);
+        if (kitchenFireImage != null && kitchen && ovenLit && kitchenFireLitSprite != null)
+        {
+            kitchenFireImage.sprite = kitchenFireLitSprite;
+            kitchenFireImage.color = Color.white;
+            kitchenFireImage.preserveAspect = true;
+        }
+    }
+
+    private void RefreshKitchenWindowPatch(bool kitchen, TimeState time)
+    {
+        if (kitchenWindowPatchImage == null)
+        {
+            return;
+        }
+
+        kitchenWindowPatchImage.gameObject.SetActive(kitchen);
+        if (!kitchen)
+        {
+            return;
+        }
+
+        Sprite sprite = kitchenWindowSpringSprite;
+        Color fallback = spring;
+        if (time == TimeState.War)
+        {
+            sprite = kitchenWindowWarSprite;
+            fallback = war;
+        }
+        else if (time == TimeState.Autumn)
+        {
+            sprite = kitchenWindowAutumnSprite;
+            fallback = autumn;
+        }
+
+        if (sprite != null)
+        {
+            kitchenWindowPatchImage.sprite = sprite;
+            kitchenWindowPatchImage.color = Color.white;
+            kitchenWindowPatchImage.preserveAspect = true;
+        }
+        else
+        {
+            kitchenWindowPatchImage.sprite = null;
+            kitchenWindowPatchImage.color = fallback;
+        }
     }
 
     private void SetImageActive(Image image, bool active)
@@ -3495,8 +4041,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         if (kitchenProcess == KitchenProcessState.BreadReady || kitchenProcess == KitchenProcessState.BreadAtDoor) return ovenBreadSprite;
         if (kitchenProcess == KitchenProcessState.Baking) return ovenBakingSprite != null ? ovenBakingSprite : ovenDoughSprite;
         if (kitchenProcess == KitchenProcessState.DoughInOven) return ovenDoughSprite;
-        if (ovenLit) return ovenLitSprite;
-        return ovenColdSprite;
+        return null;
     }
 
     private void ApplyOptionalImage(Image image, Sprite sprite)
@@ -3518,38 +4063,15 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private void RefreshIndoorMarkers(bool kitchen, TimeState time)
     {
-        RefreshKitchenProcessVisual(kitchen, time);
+        HideKitchenProcessVisual();
         RefreshCellarGirlVisual(!kitchen && time == TimeState.War);
     }
 
-    private void RefreshKitchenProcessVisual(bool visible, TimeState time)
+    private void HideKitchenProcessVisual()
     {
-        if (!visible)
-        {
-            if (kitchenProcessVisual != null)
-            {
-                kitchenProcessVisual.gameObject.SetActive(false);
-            }
-
-            return;
-        }
-
-        EnsureRuntimeMarker(
-            ref kitchenProcessVisual,
-            ref kitchenProcessText,
-            "KitchenProcessMarker",
-            new Vector2(0.55f, 0.24f),
-            new Vector2(280f, 86f),
-            new Color(1f, 0.96f, 0.78f, 0.94f));
-
-        if (kitchenProcessVisual == null || kitchenProcessText == null)
-        {
-            return;
-        }
-
-        kitchenProcessVisual.gameObject.SetActive(true);
-        kitchenProcessVisual.SetAsLastSibling();
-        kitchenProcessText.text = GetKitchenProcessDisplay() + "\n下一步：" + GetKitchenNextAction(time);
+        SetDeepChildrenActiveByName(indoorRoot, "KitchenProcessMarker", false);
+        SetDeepChildrenActiveByName(indoorRoot, "IndoorProcessMarker", false);
+        SetDeepChildrenActiveByName(indoorRoot, "KitchenIndoorProcessMarker", false);
     }
 
     private void RefreshCellarGirlVisual(bool visible)
@@ -3625,23 +4147,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private void EnsureCellarGirlVisual()
     {
         SyncCellarHierarchyReferences();
-        if (cellarGirlVisual != null && cellarGirlImage != null)
-        {
-            return;
-        }
-
-        EnsureRuntimeMarker(
-            ref cellarGirlVisual,
-            ref cellarGirlText,
-            "CellarGirlMarker",
-            new Vector2(0.64f, 0.55f),
-            new Vector2(128f, 82f),
-            girlFed ? new Color(1f, 0.68f, 0.34f, 0.94f) : new Color(0.72f, 0.78f, 0.92f, 0.94f));
-
-        if (cellarGirlVisual != null)
-        {
-            cellarGirlImage = cellarGirlVisual.GetComponent<Image>();
-        }
     }
 
     private bool HasCellarGirlFrames(bool eating)
@@ -3713,37 +4218,12 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         cellarGirlImage.color = girlFed ? new Color(1f, 0.68f, 0.34f, 0.94f) : new Color(0.72f, 0.78f, 0.92f, 0.94f);
     }
 
-    private void EnsureRuntimeMarker(ref RectTransform marker, ref Text label, string name, Vector2 position, Vector2 size, Color color)
-    {
-        if (marker != null && label != null)
-        {
-            return;
-        }
-
-        Transform parent = indoorTokenLayer != null ? indoorTokenLayer : indoorRoot;
-        if (parent == null)
-        {
-            return;
-        }
-
-        marker = CreatePanel(name, parent, color);
-        Image image = marker.GetComponent<Image>();
-        if (image != null)
-        {
-            image.raycastTarget = false;
-        }
-
-        Place(marker, position, size);
-        label = CreateText("Label", marker, "", 14, FontStyle.Bold, ink, TextAnchor.MiddleCenter);
-        Stretch(label.rectTransform, new Vector2(6f, 4f), new Vector2(-6f, -4f));
-    }
-
     private string GetKitchenIndoorHint(TimeState time)
     {
         string fireHint;
         if (ovenLit)
         {
-            fireHint = "炉膛已点燃，会一直保持可烤状态。";
+            fireHint = "炉膛已点燃；如果厨房切到战后，雨水会把火浇灭。";
         }
         else if (rocketTriggered)
         {
@@ -3755,87 +4235,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
 
         return "时间：" + GetTimeName(time) + "。案板只在春天可用；面团会随厨房时间变化：春天生面团，战时发酵，战后发霉。\n" + fireHint;
-    }
-
-    private string GetKitchenProcessDisplay()
-    {
-        string oven = ovenLit ? "炉膛已点燃" : "炉膛未点燃";
-        return "当前：" + GetKitchenStatus() + " / " + oven;
-    }
-
-    private string GetKitchenNextAction(TimeState time)
-    {
-        if (kitchenProcess == KitchenProcessState.DoughMolded)
-        {
-            return "切到战时会变回发酵面团；切到春天会变回生面团";
-        }
-
-        if (kitchenProcess == KitchenProcessState.Empty)
-        {
-            if (flourAtKitchenDoor)
-            {
-                return time == TimeState.Spring ? "点“案板放面粉”" : "切回春天，再放面粉";
-            }
-
-            return "把面粉从小推车拖到厨房门口";
-        }
-
-        if (kitchenProcess == KitchenProcessState.FlourPlaced)
-        {
-            if (waterAtKitchenDoor)
-            {
-                return time == TimeState.Spring ? "点“加入清水”" : "切回春天，再加入清水";
-            }
-
-            return "去地窖秋天积水处取清水，再拖到厨房门口";
-        }
-
-        if (kitchenProcess == KitchenProcessState.WaterAdded)
-        {
-            return time == TimeState.Spring ? "点“揉成面团”" : "切回春天，再揉面";
-        }
-
-        if (kitchenProcess == KitchenProcessState.DoughMixed)
-        {
-            return time == TimeState.War ? "等待发酵完成" : "把厨房切到战时，让生面团发酵";
-        }
-
-        if (kitchenProcess == KitchenProcessState.DoughFermented)
-        {
-            return "点“放入烤箱”";
-        }
-
-        if (kitchenProcess == KitchenProcessState.DoughInOven)
-        {
-            if (ovenLit)
-            {
-                return "等待烘烤开始";
-            }
-
-            if (rocketTriggered)
-            {
-                return CanTriggerRocketEvent() ? "把火箭拖到炉膛点火" : "让 A-2 战时、A-1 春天、A-3 战时同时成立";
-            }
-
-            return "让 A-2 战时、A-1 春天、A-3 战时同时成立，触发火箭";
-        }
-
-        if (kitchenProcess == KitchenProcessState.Baking)
-        {
-            return "等待面包出炉";
-        }
-
-        if (kitchenProcess == KitchenProcessState.BreadReady)
-        {
-            return "点“面包移到门口”";
-        }
-
-        if (kitchenProcess == KitchenProcessState.BreadAtDoor)
-        {
-            return "退出厨房，把门口面包拖到小推车";
-        }
-
-        return "继续按提示操作";
     }
 
 
@@ -4037,9 +4436,14 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private string GetCartDirectionIcon()
     {
-        if (cartDirection == CartDirection.Left) return "←";
-        if (cartDirection == CartDirection.Up) return "↑";
-        if (cartDirection == CartDirection.Down) return "↓";
+        CartDirection direction = GetCartPointDirection();
+        if (direction == CartDirection.Left) return "←";
+        if (direction == CartDirection.Up) return "↑";
+        if (direction == CartDirection.Down) return "↓";
+        if (direction == CartDirection.FrontLeft) return "↙";
+        if (direction == CartDirection.FrontRight) return "↘";
+        if (direction == CartDirection.BackLeft) return "↖";
+        if (direction == CartDirection.BackRight) return "↗";
         return "→";
     }
 
@@ -4084,76 +4488,6 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         label.horizontalOverflow = HorizontalWrapMode.Overflow;
         label.verticalOverflow = VerticalWrapMode.Overflow;
         return label;
-    }
-
-    private Button CreateButton(string name, Transform parent, string text, float size, UnityEngine.Events.UnityAction action)
-    {
-        RectTransform rect = CreatePanel(name, parent, new Color(1f, 1f, 1f, 0.9f));
-        Button button = rect.gameObject.AddComponent<Button>();
-        button.targetGraphic = rect.GetComponent<Image>();
-        button.onClick.AddListener(action);
-
-        Text label = CreateText("Text", rect, text, size, FontStyle.Bold, ink, TextAnchor.MiddleCenter);
-        Stretch(label.rectTransform, new Vector2(4f, 2f), new Vector2(-4f, -2f));
-        return button;
-    }
-
-    private Slider CreateTimeSlider(string name, Transform parent, UnityEngine.Events.UnityAction<float> action)
-    {
-        GameObject obj = new GameObject(name);
-        obj.transform.SetParent(parent, false);
-        RectTransform rect = obj.AddComponent<RectTransform>();
-
-        Image touchArea = obj.AddComponent<Image>();
-        touchArea.color = new Color(1f, 1f, 1f, 0.01f);
-        touchArea.raycastTarget = true;
-
-        Slider slider = obj.AddComponent<Slider>();
-        slider.minValue = 0f;
-        slider.maxValue = 2f;
-        slider.wholeNumbers = true;
-        slider.value = 1f;
-        slider.direction = Slider.Direction.LeftToRight;
-        slider.onValueChanged.AddListener(action);
-
-        Image background = CreateImage("Background", rect, new Color(0f, 0f, 0f, 0.22f));
-        Stretch(background.rectTransform, new Vector2(0f, 7f), new Vector2(0f, -7f));
-        background.raycastTarget = true;
-
-        RectTransform fillArea = CreatePanel("Fill Area", rect, Color.clear);
-        Stretch(fillArea, new Vector2(6f, 7f), new Vector2(-6f, -7f));
-
-        Image fill = CreateImage("Fill", fillArea, new Color(0.2f, 0.62f, 1f, 0.42f));
-        Stretch(fill.rectTransform);
-        fill.raycastTarget = false;
-
-        RectTransform handleArea = CreatePanel("Handle Slide Area", rect, Color.clear);
-        Stretch(handleArea, new Vector2(8f, 0f), new Vector2(-8f, 0f));
-
-        Image handle = CreateImage("Handle", handleArea, Color.white);
-        handle.rectTransform.sizeDelta = new Vector2(18f, 18f);
-        handle.raycastTarget = true;
-
-        slider.fillRect = fill.rectTransform;
-        slider.handleRect = handle.rectTransform;
-        slider.targetGraphic = handle;
-        return slider;
-    }
-
-    private Button CreateSmallButton(string name, Transform parent, string text, UnityEngine.Events.UnityAction action)
-    {
-        return CreateButton(name, parent, text, 14, action);
-    }
-
-    private WhiteboxDropZone CreateDropZone(Transform parent, WhiteboxDropZoneType type, RegionID region, string label)
-    {
-        RectTransform rect = CreatePanel(type.ToString(), parent, new Color(1f, 0.5f, 0.12f, 0.72f));
-        WhiteboxDropZone zone = rect.gameObject.AddComponent<WhiteboxDropZone>();
-        zone.Initialize(this, type, region);
-
-        Text text = CreateText("Label", rect, label, 13, FontStyle.Bold, Color.white, TextAnchor.MiddleCenter);
-        Stretch(text.rectTransform, new Vector2(4f, 2f), new Vector2(-4f, -2f));
-        return zone;
     }
 
     private void Anchor(RectTransform rect, Vector2 min, Vector2 max, Vector2 offsetMin, Vector2 offsetMax)
@@ -4243,6 +4577,8 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
     private Vector3 startLocalScale;
     private int startSiblingIndex;
     private bool consumed;
+    private RectTransform dragTarget;
+    private GameObject dragProxy;
 
     public void Initialize(BorderMillWhiteboxController owner, WhiteboxTokenType tokenType, RegionID sourceRegion)
     {
@@ -4267,6 +4603,7 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
     {
         consumed = true;
         enabled = false;
+        DestroyDragProxy();
         RestoreToStartTransform();
 
         if (canvasGroup != null)
@@ -4296,6 +4633,7 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
     public void OnBeginDrag(PointerEventData eventData)
     {
         consumed = false;
+        DestroyDragProxy();
         startParent = transform.parent;
         RectTransform rect = (RectTransform)transform;
         startAnchoredPosition = rect.anchoredPosition;
@@ -4311,6 +4649,13 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
             canvasGroup.blocksRaycasts = false;
         }
 
+        if (!DestroyOnConsume && controller.DragLayer != null)
+        {
+            dragTarget = CreateDragProxy(rect);
+            OnDrag(eventData);
+            return;
+        }
+
         if (controller.DragLayer != null)
         {
             transform.SetParent(controller.DragLayer, false);
@@ -4320,13 +4665,14 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
             rect.sizeDelta = startSizeDelta;
             rect.localScale = Vector3.one;
             transform.SetAsLastSibling();
+            dragTarget = rect;
             OnDrag(eventData);
         }
     }
 
     public void OnDrag(PointerEventData eventData)
     {
-        RectTransform rect = (RectTransform)transform;
+        RectTransform rect = dragTarget != null ? dragTarget : (RectTransform)transform;
         RectTransform parentRect = rect.parent as RectTransform;
         if (parentRect != null)
         {
@@ -4345,16 +4691,94 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
     {
         bool accepted = controller.TryDropToken(this, eventData);
 
-        if (canvasGroup != null)
-        {
-            canvasGroup.blocksRaycasts = true;
-        }
+        DestroyDragProxy();
+        dragTarget = null;
 
         if (accepted || consumed)
         {
             return;
         }
 
+        if (canvasGroup != null)
+        {
+            canvasGroup.blocksRaycasts = true;
+        }
+
         RestoreToStartTransform();
+    }
+
+    private RectTransform CreateDragProxy(RectTransform source)
+    {
+        GameObject proxy = new GameObject(name + "_DragProxy", typeof(RectTransform), typeof(Image), typeof(CanvasGroup));
+        proxy.transform.SetParent(controller.DragLayer, false);
+        dragProxy = proxy;
+
+        RectTransform proxyRect = proxy.GetComponent<RectTransform>();
+        proxyRect.anchorMin = new Vector2(0.5f, 0.5f);
+        proxyRect.anchorMax = new Vector2(0.5f, 0.5f);
+        proxyRect.pivot = new Vector2(0.5f, 0.5f);
+        proxyRect.sizeDelta = source.sizeDelta;
+        proxyRect.localScale = Vector3.one;
+
+        bool cartCargoProxy = controller.IsCartCargoVisual(transform);
+        Sprite tokenSprite = controller.GetDragTokenSprite(TokenType);
+        Image sourceImage = GetComponent<Image>();
+        Image proxyImage = proxy.GetComponent<Image>();
+        proxyImage.raycastTarget = false;
+        if (tokenSprite != null)
+        {
+            proxyImage.sprite = tokenSprite;
+            proxyImage.color = Color.white;
+            proxyImage.preserveAspect = true;
+        }
+        else if (!cartCargoProxy && sourceImage != null)
+        {
+            proxyImage.sprite = sourceImage.sprite;
+            proxyImage.color = sourceImage.color;
+            proxyImage.preserveAspect = sourceImage.preserveAspect;
+        }
+        else
+        {
+            proxyImage.color = controller.GetDragTokenFallbackColor(TokenType);
+        }
+
+        Text sourceText = cartCargoProxy ? null : GetComponentInChildren<Text>(true);
+        string fallbackLabel = controller.GetDragTokenLabel(TokenType);
+        if (sourceText != null || tokenSprite == null || cartCargoProxy)
+        {
+            GameObject textObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
+            textObject.transform.SetParent(proxy.transform, false);
+            RectTransform textRect = textObject.GetComponent<RectTransform>();
+            textRect.anchorMin = Vector2.zero;
+            textRect.anchorMax = Vector2.one;
+            textRect.offsetMin = Vector2.zero;
+            textRect.offsetMax = Vector2.zero;
+
+            Text proxyText = textObject.GetComponent<Text>();
+            proxyText.font = sourceText != null ? sourceText.font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
+            proxyText.text = sourceText != null ? sourceText.text : fallbackLabel;
+            proxyText.fontSize = sourceText != null ? sourceText.fontSize : 18;
+            proxyText.fontStyle = sourceText != null ? sourceText.fontStyle : FontStyle.Bold;
+            proxyText.color = sourceText != null ? sourceText.color : Color.black;
+            proxyText.alignment = sourceText != null ? sourceText.alignment : TextAnchor.MiddleCenter;
+            proxyText.raycastTarget = false;
+            proxyText.horizontalOverflow = sourceText != null ? sourceText.horizontalOverflow : HorizontalWrapMode.Wrap;
+            proxyText.verticalOverflow = sourceText != null ? sourceText.verticalOverflow : VerticalWrapMode.Overflow;
+        }
+
+        CanvasGroup proxyGroup = proxy.GetComponent<CanvasGroup>();
+        proxyGroup.blocksRaycasts = false;
+        proxyGroup.interactable = false;
+        proxy.transform.SetAsLastSibling();
+        return proxyRect;
+    }
+
+    private void DestroyDragProxy()
+    {
+        if (dragProxy != null)
+        {
+            Destroy(dragProxy);
+            dragProxy = null;
+        }
     }
 }

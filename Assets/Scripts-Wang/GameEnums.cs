@@ -33,5 +33,9 @@ public enum CartDirection
     Left,
     Right,
     Up,
-    Down
+    Down,
+    FrontLeft,
+    FrontRight,
+    BackLeft,
+    BackRight
 }
