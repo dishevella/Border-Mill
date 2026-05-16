@@ -27,6 +27,8 @@ public class PreludeManager : MonoBehaviour
     [Header("Pulse Hint")]
     public RectTransform pulseHint;
     public Image pulseHintImage;
+    public RectTransform hintLayer;
+    public Canvas rootCanvas;
 
     [Header("Center Click Area")]
     public RectTransform centerClickArea;
@@ -104,6 +106,7 @@ public class PreludeManager : MonoBehaviour
     public float timelineMoveTime = 1.0f;
     public float timelineMiddlePauseTime = 0.5f;
     public float timelineEndPauseTime = 0.4f;
+    public float timelineSceneFadeTime = 0.8f;
 
     [Header("Story Girl Images")]
     public Image warGirlImage;      // 战时中间的小女孩
@@ -576,7 +579,7 @@ public class PreludeManager : MonoBehaviour
 
         SetImageAlpha(warGirlImage, 0f);
         SetImageAlpha(autumnGirlImage, 0f);
-        StartCoroutine(FadeImageAlpha(warGirlImage, 0f, 1f, girlFadeTime));
+       
 
 
 
@@ -596,6 +599,8 @@ public class PreludeManager : MonoBehaviour
 
             yield return new WaitForSeconds(warBetweenDelay);
         }
+
+        StartCoroutine(FadeImageAlpha(warGirlImage, 0f, 1f, girlFadeTime));
 
         yield return new WaitForSeconds(warEachRevealTime + 0.2f);
     }
@@ -823,7 +828,7 @@ public class PreludeManager : MonoBehaviour
             ));
         }
 
-        ShowWarWorldImmediate();
+        yield return StartCoroutine(FadeAutumnToWarWorld(timelineSceneFadeTime));
 
         yield return new WaitForSeconds(timelineMiddlePauseTime);
 
@@ -836,7 +841,7 @@ public class PreludeManager : MonoBehaviour
             ));
         }
 
-        ShowSpringWorldImmediate();
+        yield return StartCoroutine(FadeWarToSpringWorld(timelineSceneFadeTime));
         StartWindmillAnimation();
 
         StopMusicWithFade();
@@ -985,13 +990,45 @@ public class PreludeManager : MonoBehaviour
 
     void ShowPulseAt(RectTransform target)
     {
+        if (pulseHint == null || target == null) return;
+
         pulseHint.gameObject.SetActive(true);
 
-        pulseHint.SetParent(target, false);
+        if (rootCanvas == null)
+        {
+            rootCanvas = GetComponentInParent<Canvas>();
+        }
+
+        if (hintLayer == null)
+        {
+            hintLayer = pulseHint.parent as RectTransform;
+        }
+
+        hintLayer.SetAsLastSibling();
+
+        Camera uiCamera = null;
+
+        if (rootCanvas != null && rootCanvas.renderMode != RenderMode.ScreenSpaceOverlay)
+        {
+            uiCamera = rootCanvas.worldCamera;
+        }
+
+        Vector2 screenPoint = RectTransformUtility.WorldToScreenPoint(uiCamera, target.position);
+
+        Vector2 localPoint;
+        RectTransformUtility.ScreenPointToLocalPointInRectangle(
+            hintLayer,
+            screenPoint,
+            uiCamera,
+            out localPoint
+        );
+
+        pulseHint.SetParent(hintLayer, false);
         pulseHint.anchorMin = new Vector2(0.5f, 0.5f);
         pulseHint.anchorMax = new Vector2(0.5f, 0.5f);
         pulseHint.pivot = new Vector2(0.5f, 0.5f);
-        pulseHint.anchoredPosition = Vector2.zero;
+        pulseHint.anchoredPosition = localPoint;
+        pulseHint.localScale = Vector3.one;
         pulseHint.SetAsLastSibling();
 
         if (pulseCoroutine != null)
@@ -1007,11 +1044,14 @@ public class PreludeManager : MonoBehaviour
         if (pulseCoroutine != null)
         {
             StopCoroutine(pulseCoroutine);
+            pulseCoroutine = null;
         }
 
-        pulseHint.gameObject.SetActive(false);
+        if (pulseHint != null)
+        {
+            pulseHint.gameObject.SetActive(false);
+        }
     }
-
     IEnumerator PulseAnimation()
     {
         float timer = 0f;
@@ -1334,6 +1374,101 @@ public class PreludeManager : MonoBehaviour
             SetImageAlpha(rainImage, 0f);
             rainImage.gameObject.SetActive(false);
         }
+    }
+
+    IEnumerator FadeAutumnToWarWorld(float duration)
+    {
+        // 保证底层春天图一直存在
+        for (int i = 0; i < springImages.Length; i++)
+        {
+            SetImageAlpha(springImages[i], 1f);
+        }
+
+        // 保证战时图已经在下面准备好
+        for (int i = 0; i < warOverlayImages.Length; i++)
+        {
+            SetImageAlpha(warOverlayImages[i], 1f);
+        }
+
+        // 一开始先确保战时小女孩不出现
+        SetImageAlpha(warGirlImage, 0f);
+
+        float timer = 0f;
+
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+
+            float t = timer / duration;
+            t = Mathf.SmoothStep(0f, 1f, t);
+
+            // 秋天场景慢慢消失，露出战时场景
+            for (int i = 0; i < autumnOverlayImages.Length; i++)
+            {
+                SetImageAlpha(autumnOverlayImages[i], Mathf.Lerp(1f, 0f, t));
+            }
+
+            // 秋天小女孩跟着秋天一起消失
+            SetImageAlpha(autumnGirlImage, Mathf.Lerp(1f, 0f, t));
+
+            // 战时小女孩始终不显示
+            SetImageAlpha(warGirlImage, 0f);
+
+            yield return null;
+        }
+
+        for (int i = 0; i < autumnOverlayImages.Length; i++)
+        {
+            SetImageAlpha(autumnOverlayImages[i], 0f);
+        }
+
+        // 最后停在战时：两个小女孩都不显示
+        SetImageAlpha(autumnGirlImage, 0f);
+        SetImageAlpha(warGirlImage, 0f);
+    }
+
+    IEnumerator FadeWarToSpringWorld(float duration)
+    {
+        // 春天图保持显示，战时图慢慢消失后，自然就露出春天
+        for (int i = 0; i < springImages.Length; i++)
+        {
+            SetImageAlpha(springImages[i], 1f);
+        }
+
+        for (int i = 0; i < autumnOverlayImages.Length; i++)
+        {
+            SetImageAlpha(autumnOverlayImages[i], 0f);
+        }
+
+        float timer = 0f;
+
+        while (timer < duration)
+        {
+            timer += Time.deltaTime;
+
+            float t = timer / duration;
+            t = Mathf.SmoothStep(0f, 1f, t);
+
+            // 战时图慢慢消失
+            for (int i = 0; i < warOverlayImages.Length; i++)
+            {
+                SetImageAlpha(warOverlayImages[i], Mathf.Lerp(1f, 0f, t));
+            }
+
+            // 时间轴战时阶段不显示任何小女孩
+            SetImageAlpha(warGirlImage, 0f);
+            SetImageAlpha(autumnGirlImage, 0f);
+
+            yield return null;
+        }
+
+        for (int i = 0; i < warOverlayImages.Length; i++)
+        {
+            SetImageAlpha(warOverlayImages[i], 0f);
+        }
+
+        SetImageAlpha(warGirlImage, 0f);
+        SetImageAlpha(autumnGirlImage, 0f);
     }
 
 
