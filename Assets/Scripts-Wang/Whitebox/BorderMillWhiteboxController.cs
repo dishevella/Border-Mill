@@ -236,6 +236,49 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     [Header("Token Art - optional item sprites")]
     [SerializeField] private List<TokenSpriteBinding> tokenSprites = new List<TokenSpriteBinding>();
 
+    [Header("Rocket Event Art")]
+    [SerializeField] private Sprite kitchenRocketBackgroundSprite;
+    [Header("War Rocket Animation")]
+    [SerializeField] private Sprite rocketSprite;
+    [SerializeField] private List<Sprite> rocketFrames = new List<Sprite>();
+    [SerializeField] private Vector2 rocketSize = new Vector2(160f, 90f);
+    [SerializeField] private float rocketMoveDuration = 0.8f;
+    [SerializeField] private float rocketInterval = 2.2f;
+    [SerializeField] private float rocketFrameSeconds = 0.08f;
+    [SerializeField] private float rocketRotationZ = 0f;
+    private readonly Dictionary<RegionID, Image> regionRocketImages = new Dictionary<RegionID, Image>();
+    private readonly Dictionary<RegionID, Coroutine> regionRocketRoutines = new Dictionary<RegionID, Coroutine>();
+    [Header("Season Rain Animation")]
+    [SerializeField] private List<Sprite> rainFrames = new List<Sprite>();
+    [SerializeField] private float rainFrameSeconds = 0.08f;
+
+    private readonly Dictionary<RegionID, Image> regionRainImages = new Dictionary<RegionID, Image>();
+    private readonly Dictionary<RegionID, Coroutine> regionRainRoutines = new Dictionary<RegionID, Coroutine>();
+    [Header("Season Animator FX")]
+    [SerializeField] private RectTransform rainFxRoot;
+    [SerializeField] private Animator rainAnimator;
+    [SerializeField] private float rainFxDuration = 1.2f;
+
+    private Coroutine rainAnimatorRoutine;
+    [Header("Season Change Animation")]
+    [SerializeField] private Image rainFxImage;
+
+    [SerializeField] private float rainDuration = 1.2f;
+
+    [SerializeField] private Image rocketFxImage;
+   
+    [SerializeField] private float rocketDuration = 1.2f;
+
+    private Coroutine rainFxRoutine;
+    private Coroutine rocketFxRoutine;
+
+    [Header("Mill Windmill Animation")]
+    [SerializeField] private Image windmillImage;
+    [SerializeField] private List<Sprite> windmillFrames = new List<Sprite>();
+    [SerializeField] private float windmillFrameSeconds = 0.08f;
+
+    private Coroutine windmillRoutine;
+
     [Header("Indoor UI")]
     [SerializeField] private RectTransform indoorRoot;
     [SerializeField] private RectTransform kitchenIndoorRoot;
@@ -370,8 +413,29 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             finalOverlay.gameObject.SetActive(false);
         }
+        if (rainFxRoot != null)
+        {
+            rainFxRoot.gameObject.SetActive(false);
+        }
+        if (rainFxImage != null)
+        {
+            rainFxImage.gameObject.SetActive(false);
+            rainFxImage.raycastTarget = false;
+        }
+
+        if (rocketFxImage != null)
+        {
+            rocketFxImage.gameObject.SetActive(false);
+            rocketFxImage.raycastTarget = false;
+        }
+        CreateRegionRainImages();
+        CreateRegionRocketImages();
 
         RefreshAll();
+        RefreshWindmillFx();
+        RefreshRegionRainFx();
+        RefreshRegionRocketFx();
+
         AddLog("初始全区域为春天。按道路点移动，跨格路段需要相关区域保持春天。");
     }
 
@@ -1212,12 +1276,14 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         {
             AddLog("结局后时间控制权被收回。");
             RefreshAll();
+            RefreshRegionRainFx();
             return;
         }
 
         if (regionTimes[region] == time)
         {
             RefreshAll();
+            RefreshRegionRainFx();
             return;
         }
 
@@ -1232,10 +1298,772 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         AddLog(GetRegionName(region) + "切换到" + GetTimeName(time) + "。");
         MaybeAutoMillWheat();
         CheckRocketEvent();
+
         RefreshAll();
         StartSceneTransitionFade(region);
+        RefreshRegionRainFx();
+        RefreshRegionRocketFx();
+        RefreshWindmillFx();
+    }
+    private void RefreshWindmillFx()
+    {
+        bool shouldPlay =
+            regionTimes.ContainsKey(RegionID.Mill) &&
+            regionTimes[RegionID.Mill] == TimeState.Spring;
+
+        if (shouldPlay)
+        {
+            StartWindmillFx();
+        }
+        else
+        {
+            StopWindmillFx();
+        }
     }
 
+    private void StartWindmillFx()
+    {
+        if (windmillImage == null || windmillFrames == null || windmillFrames.Count == 0)
+        {
+            return;
+        }
+
+        if (windmillRoutine != null)
+        {
+            return;
+        }
+
+        windmillRoutine = StartCoroutine(PlayWindmillLoop());
+    }
+
+    private void StopWindmillFx()
+    {
+        if (windmillRoutine != null)
+        {
+            StopCoroutine(windmillRoutine);
+            windmillRoutine = null;
+        }
+
+        if (windmillImage != null)
+        {
+            Sprite firstFrame = GetFirstValidSprite(windmillFrames);
+
+            if (firstFrame != null)
+            {
+                windmillImage.sprite = firstFrame;
+                windmillImage.color = Color.white;
+            }
+        }
+    }
+
+    private IEnumerator PlayWindmillLoop()
+    {
+        if (windmillImage == null || windmillFrames == null || windmillFrames.Count == 0)
+        {
+            yield break;
+        }
+
+        Sprite firstFrame = GetFirstValidSprite(windmillFrames);
+        if (firstFrame == null)
+        {
+            yield break;
+        }
+
+        windmillImage.gameObject.SetActive(true);
+        windmillImage.raycastTarget = false;
+        windmillImage.color = Color.white;
+        windmillImage.preserveAspect = true;
+
+        float safeFrameSeconds = Mathf.Max(0.03f, windmillFrameSeconds);
+        int frameIndex = 0;
+
+        while (regionTimes.ContainsKey(RegionID.Mill) &&
+               regionTimes[RegionID.Mill] == TimeState.Spring)
+        {
+            Sprite frame = windmillFrames[frameIndex];
+
+            if (frame != null)
+            {
+                windmillImage.sprite = frame;
+            }
+
+            frameIndex++;
+            if (frameIndex >= windmillFrames.Count)
+            {
+                frameIndex = 0;
+            }
+
+            yield return new WaitForSeconds(safeFrameSeconds);
+        }
+
+        windmillRoutine = null;
+    }
+
+    private void CreateRegionRocketImages()
+    {
+        ClearRegionRocketImages();
+
+        foreach (KeyValuePair<RegionID, RegionView> pair in regionViews)
+        {
+            RegionID region = pair.Key;
+            RegionView view = pair.Value;
+
+            if (view == null || view.Root == null)
+            {
+                continue;
+            }
+
+            GameObject clipObject = new GameObject("RocketClip_" + region, typeof(RectTransform), typeof(RectMask2D));
+            clipObject.transform.SetParent(view.Root, false);
+
+            RectTransform clipRect = clipObject.GetComponent<RectTransform>();
+            Stretch(clipRect);
+
+            RectMask2D mask = clipObject.GetComponent<RectMask2D>();
+            mask.padding = Vector4.zero;
+            mask.softness = Vector2Int.zero;
+
+            GameObject rocketObject = new GameObject("RocketFX_" + region, typeof(RectTransform), typeof(Image));
+            rocketObject.transform.SetParent(clipRect, false);
+
+            RectTransform rocketRect = rocketObject.GetComponent<RectTransform>();
+            rocketRect.anchorMin = new Vector2(0.5f, 0.5f);
+            rocketRect.anchorMax = new Vector2(0.5f, 0.5f);
+            rocketRect.pivot = new Vector2(0.5f, 0.5f);
+            rocketRect.sizeDelta = rocketSize;
+            rocketRect.anchoredPosition = Vector2.zero;
+            rocketRect.localRotation = Quaternion.Euler(0f, 0f, -135f);
+
+            Image rocketImage = rocketObject.GetComponent<Image>();
+            rocketImage.raycastTarget = false;
+            rocketImage.preserveAspect = true;
+            rocketImage.sprite = null;
+            rocketImage.color = new Color(1f, 1f, 1f, 0f);
+
+            rocketObject.SetActive(false);
+
+            clipObject.transform.SetAsLastSibling();
+            rocketObject.transform.SetAsLastSibling();
+
+            regionRocketImages[region] = rocketImage;
+        }
+    }
+    private void ClearRegionRocketImages()
+    {
+        foreach (KeyValuePair<RegionID, Coroutine> pair in regionRocketRoutines)
+        {
+            if (pair.Value != null)
+            {
+                StopCoroutine(pair.Value);
+            }
+        }
+
+        regionRocketRoutines.Clear();
+
+        foreach (KeyValuePair<RegionID, Image> pair in regionRocketImages)
+        {
+            if (pair.Value != null)
+            {
+                Transform clipRoot = pair.Value.transform.parent;
+
+                if (clipRoot != null && clipRoot.name.StartsWith("RocketClip_"))
+                {
+                    Destroy(clipRoot.gameObject);
+                }
+                else
+                {
+                    Destroy(pair.Value.gameObject);
+                }
+            }
+        }
+
+        regionRocketImages.Clear();
+    }
+    private void RefreshRegionRocketFx()
+    {
+        foreach (KeyValuePair<RegionID, Image> pair in regionRocketImages)
+        {
+            RegionID region = pair.Key;
+
+            bool shouldPlayRocket =
+                regionTimes.ContainsKey(region) &&
+                regionTimes[region] == TimeState.War;
+
+            if (shouldPlayRocket)
+            {
+                StartRegionRocket(region);
+            }
+            else
+            {
+                StopRegionRocket(region);
+            }
+        }
+    }
+    private void StartRegionRocket(RegionID region)
+    {
+        Image image;
+        if (!regionRocketImages.TryGetValue(region, out image) || image == null)
+        {
+            return;
+        }
+
+        bool hasRocketArt = rocketSprite != null || GetFirstValidSprite(rocketFrames) != null;
+
+        if (!hasRocketArt)
+        {
+            AddLog("火箭动画没有设置：请绑定 Rocket Sprite 或 Rocket Frames。");
+            return;
+        }
+
+        Coroutine existing;
+        if (regionRocketRoutines.TryGetValue(region, out existing) && existing != null)
+        {
+            return;
+        }
+
+        regionRocketRoutines[region] = StartCoroutine(PlayRegionRocketLoop(region, image));
+    }
+    private void StopRegionRocket(RegionID region)
+    {
+        Coroutine existing;
+        if (regionRocketRoutines.TryGetValue(region, out existing) && existing != null)
+        {
+            StopCoroutine(existing);
+        }
+
+        regionRocketRoutines[region] = null;
+
+        Image image;
+        if (regionRocketImages.TryGetValue(region, out image) && image != null)
+        {
+            image.sprite = null;
+            image.color = new Color(1f, 1f, 1f, 0f);
+            image.gameObject.SetActive(false);
+        }
+    }
+    private IEnumerator PlayRegionRocketLoop(RegionID region, Image image)
+    {
+        if (image == null)
+        {
+            yield break;
+        }
+
+        Sprite firstFrame = GetFirstValidSprite(rocketFrames);
+
+        if (firstFrame == null)
+        {
+            firstFrame = rocketSprite;
+        }
+
+        if (firstFrame == null)
+        {
+            yield break;
+        }
+
+        RectTransform rocketRect = image.rectTransform;
+        RectTransform clipRect = rocketRect.parent as RectTransform;
+
+        if (clipRect == null)
+        {
+            yield break;
+        }
+
+        float safeMoveDuration = Mathf.Max(0.05f, rocketMoveDuration);
+        float safeInterval = Mathf.Max(0.1f, rocketInterval);
+        float safeFrameSeconds = Mathf.Max(0.03f, rocketFrameSeconds);
+
+        while (regionTimes.ContainsKey(region) && regionTimes[region] == TimeState.War)
+        {
+            image.sprite = firstFrame;
+            image.color = Color.white;
+            image.raycastTarget = false;
+            image.preserveAspect = true;
+            image.gameObject.SetActive(true);
+            rocketRect.SetAsLastSibling();
+
+            rocketRect.sizeDelta = rocketSize;
+            rocketRect.localRotation = Quaternion.Euler(0f, 0f, rocketRotationZ);
+
+            Rect rect = clipRect.rect;
+
+            Vector2 startPosition = new Vector2(
+                rect.xMax + rocketSize.x,
+                rect.yMax + rocketSize.y
+            );
+
+            Vector2 endPosition = new Vector2(
+                rect.xMin - rocketSize.x,
+                rect.yMin - rocketSize.y
+            );
+
+            float moveTimer = 0f;
+            float frameTimer = 0f;
+            int frameIndex = 0;
+
+            while (moveTimer < safeMoveDuration &&
+                   regionTimes.ContainsKey(region) &&
+                   regionTimes[region] == TimeState.War)
+            {
+                moveTimer += Time.deltaTime;
+                frameTimer += Time.deltaTime;
+
+                float t = Mathf.Clamp01(moveTimer / safeMoveDuration);
+                rocketRect.anchoredPosition = Vector2.Lerp(startPosition, endPosition, t);
+
+                if (rocketFrames != null && rocketFrames.Count > 0 && frameTimer >= safeFrameSeconds)
+                {
+                    frameTimer = 0f;
+
+                    Sprite frame = rocketFrames[frameIndex];
+                    if (frame != null)
+                    {
+                        image.sprite = frame;
+                    }
+
+                    frameIndex++;
+                    if (frameIndex >= rocketFrames.Count)
+                    {
+                        frameIndex = 0;
+                    }
+                }
+
+                yield return null;
+            }
+
+            image.gameObject.SetActive(false);
+            image.color = new Color(1f, 1f, 1f, 0f);
+
+            yield return new WaitForSeconds(safeInterval);
+        }
+
+        image.sprite = null;
+        image.color = new Color(1f, 1f, 1f, 0f);
+        image.gameObject.SetActive(false);
+        regionRocketRoutines[region] = null;
+    }
+   
+    private void CreateRegionRainImages()
+    {
+        ClearRegionRainImages();
+
+        foreach (KeyValuePair<RegionID, RegionView> pair in regionViews)
+        {
+            RegionID region = pair.Key;
+            RegionView view = pair.Value;
+
+            if (view == null || view.Root == null)
+            {
+                continue;
+            }
+
+            // 1. 先创建一个裁剪容器，大小等于当前格子
+            GameObject clipObject = new GameObject("RainClip_" + region, typeof(RectTransform), typeof(RectMask2D));
+            clipObject.transform.SetParent(view.Root, false);
+
+            RectTransform clipRect = clipObject.GetComponent<RectTransform>();
+            Stretch(clipRect);
+
+            RectMask2D mask = clipObject.GetComponent<RectMask2D>();
+            mask.padding = Vector4.zero;
+            mask.softness = Vector2Int.zero;
+
+            // 2. 再在裁剪容器里面创建真正播放雨帧的 Image
+            GameObject rainObject = new GameObject("RainFX_" + region, typeof(RectTransform), typeof(Image));
+            rainObject.transform.SetParent(clipRect, false);
+
+            RectTransform rainRect = rainObject.GetComponent<RectTransform>();
+            Stretch(rainRect);
+
+            Image rainImage = rainObject.GetComponent<Image>();
+            rainImage.raycastTarget = false;
+            rainImage.preserveAspect = false;
+            rainImage.sprite = null;
+            rainImage.color = new Color(1f, 1f, 1f, 0f);
+
+            rainObject.SetActive(false);
+
+            // 3. 放到当前格子的最上层，但仍然只会被裁剪在这个格子内
+            clipObject.transform.SetAsLastSibling();
+            rainObject.transform.SetAsLastSibling();
+
+            regionRainImages[region] = rainImage;
+        }
+    }
+
+    private void ClearRegionRainImages()
+    {
+        foreach (KeyValuePair<RegionID, Coroutine> pair in regionRainRoutines)
+        {
+            if (pair.Value != null)
+            {
+                StopCoroutine(pair.Value);
+            }
+        }
+
+        regionRainRoutines.Clear();
+
+        foreach (KeyValuePair<RegionID, Image> pair in regionRainImages)
+        {
+            if (pair.Value != null)
+            {
+                Transform clipRoot = pair.Value.transform.parent;
+
+                if (clipRoot != null && clipRoot.name.StartsWith("RainClip_"))
+                {
+                    Destroy(clipRoot.gameObject);
+                }
+                else
+                {
+                    Destroy(pair.Value.gameObject);
+                }
+            }
+        }
+
+        regionRainImages.Clear();
+    }
+
+    private void RefreshRegionRainFx()
+    {
+        foreach (KeyValuePair<RegionID, Image> pair in regionRainImages)
+        {
+            RegionID region = pair.Key;
+
+            bool shouldRain =
+                regionTimes.ContainsKey(region) &&
+                regionTimes[region] == TimeState.Autumn;
+
+            if (shouldRain)
+            {
+                StartRegionRain(region);
+            }
+            else
+            {
+                StopRegionRain(region);
+            }
+        }
+    }
+
+    private void StartRegionRain(RegionID region)
+    {
+        if (rainFrames == null || rainFrames.Count == 0)
+        {
+            AddLog("雨动画没有设置：请把雨帧拖进 Rain Frames。");
+            return;
+        }
+
+        Image image;
+        if (!regionRainImages.TryGetValue(region, out image) || image == null)
+        {
+            return;
+        }
+
+        Coroutine existing;
+        if (regionRainRoutines.TryGetValue(region, out existing) && existing != null)
+        {
+            return;
+        }
+
+        regionRainRoutines[region] = StartCoroutine(PlayRegionRainLoop(region, image));
+    }
+
+    private void StopRegionRain(RegionID region)
+    {
+        Coroutine existing;
+        if (regionRainRoutines.TryGetValue(region, out existing) && existing != null)
+        {
+            StopCoroutine(existing);
+        }
+
+        regionRainRoutines[region] = null;
+
+        Image image;
+        if (regionRainImages.TryGetValue(region, out image) && image != null)
+        {
+            image.sprite = null;
+            image.color = new Color(1f, 1f, 1f, 0f);
+            image.gameObject.SetActive(false);
+        }
+    }
+
+    private IEnumerator PlayRegionRainLoop(RegionID region, Image image)
+    {
+        if (image == null || rainFrames == null || rainFrames.Count == 0)
+        {
+            yield break;
+        }
+
+        Sprite firstFrame = GetFirstValidSprite(rainFrames);
+        if (firstFrame == null)
+        {
+            yield break;
+        }
+
+        image.sprite = firstFrame;
+        image.color = Color.white;
+        image.raycastTarget = false;
+        image.gameObject.SetActive(true);
+        image.rectTransform.SetAsLastSibling();
+
+        float safeFrameSeconds = Mathf.Max(0.03f, rainFrameSeconds);
+        int frameIndex = 0;
+
+        while (regionTimes.ContainsKey(region) && regionTimes[region] == TimeState.Autumn)
+        {
+            Sprite frame = rainFrames[frameIndex];
+
+            if (frame != null)
+            {
+                image.sprite = frame;
+            }
+
+            frameIndex++;
+            if (frameIndex >= rainFrames.Count)
+            {
+                frameIndex = 0;
+            }
+
+            yield return new WaitForSeconds(safeFrameSeconds);
+        }
+
+        image.sprite = null;
+        image.color = new Color(1f, 1f, 1f, 0f);
+        image.gameObject.SetActive(false);
+        regionRainRoutines[region] = null;
+    }
+
+    private Sprite GetFirstValidSprite(List<Sprite> sprites)
+    {
+        if (sprites == null)
+        {
+            return null;
+        }
+
+        for (int i = 0; i < sprites.Count; i++)
+        {
+            if (sprites[i] != null)
+            {
+                return sprites[i];
+            }
+        }
+
+        return null;
+    }
+    private void PlayRainAnimator(RegionID region)
+    {
+        if (rainFxRoot == null || rainAnimator == null)
+        {
+            AddLog("雨动画没有绑定：请把 RainFX 和 Animator 拖到脚本上。");
+            return;
+        }
+
+        MoveRainFxToRegion(region);
+
+        if (rainAnimatorRoutine != null)
+        {
+            StopCoroutine(rainAnimatorRoutine);
+        }
+
+        rainAnimatorRoutine = StartCoroutine(PlayRainAnimatorRoutine());
+    }
+
+    private IEnumerator PlayRainAnimatorRoutine()
+    {
+        rainFxRoot.gameObject.SetActive(true);
+        rainFxRoot.SetAsLastSibling();
+
+        rainAnimator.ResetTrigger("Play");
+        rainAnimator.Play("Idle", 0, 0f);
+        rainAnimator.Update(0f);
+        rainAnimator.SetTrigger("Play");
+
+        yield return new WaitForSeconds(rainFxDuration);
+
+        rainFxRoot.gameObject.SetActive(false);
+        rainAnimatorRoutine = null;
+    }
+    private void MoveRainFxToRegion(RegionID region)
+    {
+        if (rainFxRoot == null)
+        {
+            return;
+        }
+
+        RectTransform parent = null;
+
+        if (currentIndoorRoom != WhiteboxIndoorRoom.None)
+        {
+            RegionID indoorRegion = currentIndoorRoom == WhiteboxIndoorRoom.Kitchen ? RegionID.Kitchen : RegionID.Cellar;
+
+            if (indoorRegion == region && indoorRoot != null)
+            {
+                parent = indoorRoot;
+            }
+        }
+
+        if (parent == null)
+        {
+            RegionView view;
+            if (regionViews.TryGetValue(region, out view) && view.Root != null)
+            {
+                parent = view.Root;
+            }
+        }
+
+        if (parent == null)
+        {
+            parent = root;
+        }
+
+        rainFxRoot.SetParent(parent, false);
+        Stretch(rainFxRoot);
+        rainFxRoot.SetAsLastSibling();
+    }
+    private void PlaySeasonChangeFx(RegionID region, TimeState time)
+    {
+        if (time == TimeState.Autumn)
+        {
+            PlayRainFx(region);
+        }
+        else if (time == TimeState.War)
+        {
+            PlayRocketFx(region);
+        }
+    }
+
+    private void PlayRainFx(RegionID region)
+    {
+        if (rainFxImage == null || rainFrames == null || rainFrames.Count == 0)
+        {
+            AddLog("雨动画没有设置：请绑定 Rain Fx Image 和 Rain Frames。");
+            return;
+        }
+
+        MoveFxToCurrentView(rainFxImage.rectTransform, region);
+
+        if (rainFxRoutine != null)
+        {
+            StopCoroutine(rainFxRoutine);
+        }
+
+        rainFxRoutine = StartCoroutine(PlayFrameFxRoutine(
+            rainFxImage,
+            rainFrames,
+            rainFrameSeconds,
+            rainDuration,
+            delegate { rainFxRoutine = null; }
+        ));
+    }
+
+    private void PlayRocketFx(RegionID region)
+    {
+        if (rocketFxImage == null || rocketFrames == null || rocketFrames.Count == 0)
+        {
+            AddLog("火箭动画没有设置：请绑定 Rocket Fx Image 和 Rocket Frames。");
+            return;
+        }
+
+        MoveFxToCurrentView(rocketFxImage.rectTransform, region);
+
+        if (rocketFxRoutine != null)
+        {
+            StopCoroutine(rocketFxRoutine);
+        }
+
+        rocketFxRoutine = StartCoroutine(PlayFrameFxRoutine(
+            rocketFxImage,
+            rocketFrames,
+            rocketFrameSeconds,
+            rocketDuration,
+            delegate { rocketFxRoutine = null; }
+        ));
+    }
+
+    private IEnumerator PlayFrameFxRoutine(
+    Image image,
+    List<Sprite> frames,
+    float frameSeconds,
+    float duration,
+    System.Action onComplete)
+    {
+        if (image == null || frames == null || frames.Count == 0)
+        {
+            yield break;
+        }
+
+        image.gameObject.SetActive(true);
+        image.raycastTarget = false;
+        image.color = Color.white;
+        image.rectTransform.SetAsLastSibling();
+
+        float safeFrameSeconds = Mathf.Max(0.03f, frameSeconds);
+        float timer = 0f;
+        int frameIndex = 0;
+
+        while (timer < duration)
+        {
+            Sprite frame = frames[frameIndex];
+
+            if (frame != null)
+            {
+                image.sprite = frame;
+                image.preserveAspect = true;
+            }
+
+            frameIndex++;
+            if (frameIndex >= frames.Count)
+            {
+                frameIndex = 0;
+            }
+
+            timer += safeFrameSeconds;
+            yield return new WaitForSeconds(safeFrameSeconds);
+        }
+
+        image.gameObject.SetActive(false);
+
+        if (onComplete != null)
+        {
+            onComplete();
+        }
+    }
+
+    private void MoveFxToCurrentView(RectTransform fxRect, RegionID region)
+    {
+        if (fxRect == null)
+        {
+            return;
+        }
+
+        RectTransform parent = null;
+
+        if (currentIndoorRoom != WhiteboxIndoorRoom.None)
+        {
+            RegionID indoorRegion = currentIndoorRoom == WhiteboxIndoorRoom.Kitchen ? RegionID.Kitchen : RegionID.Cellar;
+
+            if (indoorRegion == region && indoorRoot != null)
+            {
+                parent = indoorRoot;
+            }
+        }
+
+        if (parent == null)
+        {
+            RegionView view;
+            if (regionViews.TryGetValue(region, out view) && view.Root != null)
+            {
+                parent = view.Root;
+            }
+        }
+
+        if (parent == null)
+        {
+            parent = root;
+        }
+
+        fxRect.SetParent(parent, false);
+        Stretch(fxRect);
+        fxRect.SetAsLastSibling();
+    }
     private void ApplyKitchenTimeConsequence(RegionID region, TimeState time)
     {
         if (region != RegionID.Kitchen)
@@ -1270,20 +2098,21 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
+        KitchenProcessState previousState = kitchenProcess;
         kitchenProcess = nextState;
         RemoveTokenOfType(WhiteboxTokenType.Dough);
 
         if (nextState == KitchenProcessState.DoughMixed)
         {
-            AddLog("面团回到战前春天，恢复为未发酵的生面团。");
+            AddLog(previousState == KitchenProcessState.DoughMolded ? "面团回到春天，恢复为揉好的面团。" : "面团回到春天，仍是揉好的面团。");
         }
         else if (nextState == KitchenProcessState.DoughFermented)
         {
-            AddLog("面团在战时完成发酵，可以放入烤箱。");
+            AddLog(previousState == KitchenProcessState.DoughMolded ? "切回战时，发霉面团恢复成发酵好的面团。" : "战时让面团发酵完成，可以放入烤炉。");
         }
         else
         {
-            AddLog("面团在战后秋天发霉，切回战时会重新变成发酵状态。");
+            AddLog("面团在战后秋天发霉，不能放入烤炉。");
         }
     }
 
@@ -1652,15 +2481,10 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
-        if (FindToken(WhiteboxTokenType.Wheat) != null)
-        {
-            AddLog("麦子已经在图上，拖到小推车即可。");
-            return;
-        }
-
-        SpawnToken(WhiteboxTokenType.Wheat, RegionID.Field, regionViews[RegionID.Field].TokenLayer, "麦子\n拖到推车", new Color(0.95f, 0.74f, 0.25f, 0.96f), new Vector2(0.58f, 0.48f));
+        cartCargo = CartCargo.Wheat;
         wheatHarvested = true;
-        AddLog("麦子生成在右上秋天麦田。");
+        AddLog("麦子收割后直接装上小推车。");
+        RefreshAll();
     }
 
     private void MaybeAutoMillWheat()
@@ -1687,15 +2511,15 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
-        if (cartNodeId != WhiteboxCartNodeId.CellarDoor)
+        if (!IsCartAtCellarDoor())
         {
-            AddLog("先把小推车推到“地窖入口”点；秋天下雨，入口处才有积水。");
+            AddLog("先把小推车推到“地窖入口 / CellarDoor”点，再取水。");
             return;
         }
 
         if (regionTimes[RegionID.Cellar] != TimeState.Autumn)
         {
-            AddLog("干净积水只在右下战后秋天出现。");
+            AddLog("右下角需要切到秋天，地窖入口才有积水可以取。");
             return;
         }
 
@@ -1707,8 +2531,35 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         cartCargo = CartCargo.Water;
         waterCollected = true;
-        AddLog("从地窖入口的干净积水取水。小推车切换为带水状态。");
+        AddLog("右下角秋天，在地窖入口取到清水。小推车切换为带水状态。");
         RefreshAll();
+    }
+
+    private bool IsCartAtCellarDoor()
+    {
+        if (cartNodeId == WhiteboxCartNodeId.CellarDoor)
+        {
+            return true;
+        }
+
+        CartNode node;
+        if (!cartNodes.TryGetValue(cartNodeId, out node) || string.IsNullOrEmpty(node.Name))
+        {
+            return false;
+        }
+
+        string normalized = node.Name.Replace(" ", "").ToLowerInvariant();
+        return normalized.Contains("cellardoor") || node.Name.Contains("地窖入口");
+    }
+
+    private bool CanCollectWaterNow()
+    {
+        return !girlFed &&
+               currentIndoorRoom == WhiteboxIndoorRoom.None &&
+               !waterCollected &&
+               IsCartAtCellarDoor() &&
+               regionTimes[RegionID.Cellar] == TimeState.Autumn &&
+               cartCargo == CartCargo.Empty;
     }
 
     private void PlaceFlourOnBoard()
@@ -1785,7 +2636,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         kitchenProcess = KitchenProcessState.WaterAdded;
         waterAtKitchenDoor = false;
         RemoveTokenOfType(WhiteboxTokenType.Water);
-        AddLog("清水加入面粉。下一步揉面。");
+        AddLog("清水加入面粉，案板图保持面粉状态。下一步点击揉面。");
         RefreshAll();
     }
 
@@ -1803,9 +2654,9 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
-        if (kitchenProcess == KitchenProcessState.DoughMixed || kitchenProcess == KitchenProcessState.DoughFermented)
+        if (kitchenProcess == KitchenProcessState.DoughMixed)
         {
-            AddLog("生面团已经揉好。切到战时让它发酵。");
+            AddLog("面团已经揉好，切到战时会发酵完成；切到战后会发霉。");
             return;
         }
 
@@ -1819,7 +2670,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         RemoveTokenOfType(WhiteboxTokenType.Flour);
         RemoveTokenOfType(WhiteboxTokenType.Water);
         RemoveTokenOfType(WhiteboxTokenType.Dough);
-        AddLog("面粉和水揉成生面团。切到战时完成发酵；切到秋天会发霉。");
+        AddLog("面粉和水揉成面团。切到战时会变成发酵好的面团；战后秋天会发霉。");
         RefreshAll();
     }
 
@@ -1833,7 +2684,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         if (kitchenProcess == KitchenProcessState.DoughMolded)
         {
-            AddLog("面团现在发霉，切回战时会变成发酵面团，切回春天会变回生面团。");
+            AddLog("面团现在发霉，切回春天恢复为揉好的面团，切回战时会变成发酵好的面团。");
             return;
         }
 
@@ -1843,15 +2694,15 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
-        if (kitchenProcess == KitchenProcessState.DoughMixed)
-        {
-            AddLog("面团还没发酵。把厨房切到战时完成发酵。");
-            return;
-        }
-
         if (kitchenProcess == KitchenProcessState.DoughInOven || kitchenProcess == KitchenProcessState.Baking)
         {
             AddLog("面团已经在烤箱里。");
+            return;
+        }
+
+        if (kitchenProcess == KitchenProcessState.DoughMixed)
+        {
+            AddLog("面团还没有发酵完成，先把厨房切到战时。");
             return;
         }
 
@@ -1863,7 +2714,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         kitchenProcess = KitchenProcessState.DoughInOven;
         RemoveTokenOfType(WhiteboxTokenType.Dough);
-        AddLog(ovenLit ? "发酵面团放入已点燃烤箱，开始烘烤。" : "发酵面团放入烤箱。烤炉点燃后会开始烘烤。");
+        AddLog(ovenLit ? "发酵好的面团放入已点燃烤箱。" : "发酵好的面团放入烤箱。烤炉点燃后会变成面包。");
         if (ovenLit)
         {
             StartBaking();
@@ -2088,6 +2939,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             regionTimes[RegionID.Kitchen] == TimeState.War;
     }
 
+    private bool HasActiveKitchenRocket()
+    {
+        return rocketTriggered && !ovenLit && CanTriggerRocketEvent();
+    }
+
     private void SpawnArrowInKitchenIfNeeded()
     {
         if (!rocketTriggered || ovenLit || !CanTriggerRocketEvent() || FindToken(WhiteboxTokenType.Arrow) != null)
@@ -2244,9 +3100,9 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
-        kitchenProcess = KitchenProcessState.Baking;
-        AddLog(wasAlreadyLit ? "炉膛已经点燃，面团开始烘烤。" : "火箭点燃炉膛，面包开始烘烤。");
-        bakeRoutine = StartCoroutine(BakeRoutine());
+        kitchenProcess = KitchenProcessState.BreadReady;
+        AddLog(wasAlreadyLit ? "发酵好的面团放进已点燃烤炉，变成面包。" : "火箭点燃炉膛，炉里的发酵面团变成面包。");
+        bakeRoutine = null;
         RefreshAll();
     }
 
@@ -2337,6 +3193,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             }
         }
 
+        if (TryDropBreadToCartByPointer(token, eventData))
+        {
+            return true;
+        }
+
         if (CanUseCellarBreadFallback(token))
         {
             return DropTokenToCellar(token, true);
@@ -2397,6 +3258,69 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             breadAtCellarEntrance &&
             currentIndoorRoom == WhiteboxIndoorRoom.Cellar &&
             regionTimes[RegionID.Cellar] == TimeState.War;
+    }
+
+    private bool TryDropBreadToCartByPointer(WhiteboxDraggableToken token, PointerEventData eventData)
+    {
+        if (!CanLoadKitchenBreadOntoCart(token))
+        {
+            return false;
+        }
+
+        if (IsPointerInsideRect(cartVisual, eventData) || IsPointerInsideRect(kitchenDoorDropZoneRect, eventData))
+        {
+            return LoadKitchenBreadOntoCart(token);
+        }
+
+        return false;
+    }
+
+    private bool CanLoadKitchenBreadOntoCart(WhiteboxDraggableToken token)
+    {
+        return token != null &&
+               token.TokenType == WhiteboxTokenType.Bread &&
+               token.SourceRegion == RegionID.Kitchen &&
+               currentIndoorRoom == WhiteboxIndoorRoom.None &&
+               cartCargo == CartCargo.Empty &&
+               IsCartAtKitchenDoor() &&
+               kitchenProcess == KitchenProcessState.BreadAtDoor;
+    }
+
+    private bool LoadKitchenBreadOntoCart(WhiteboxDraggableToken token)
+    {
+        cartCargo = CartCargo.Bread;
+        kitchenProcess = KitchenProcessState.Empty;
+        ConsumeToken(token);
+        AddLog("面包装车。小推车切换为托盘/面包状态。");
+        RefreshAll();
+        return true;
+    }
+
+    private bool IsCartAtKitchenDoor()
+    {
+        if (cartNodeId == WhiteboxCartNodeId.KitchenDoor)
+        {
+            return true;
+        }
+
+        CartNode node;
+        if (!cartNodes.TryGetValue(cartNodeId, out node) || string.IsNullOrEmpty(node.Name))
+        {
+            return false;
+        }
+
+        string normalized = node.Name.Replace(" ", "").ToLowerInvariant();
+        return normalized.Contains("kitchendoor") || node.Name.Contains("厨房门");
+    }
+
+    private bool IsPointerInsideRect(RectTransform rect, PointerEventData eventData)
+    {
+        if (rect == null || eventData == null)
+        {
+            return false;
+        }
+
+        return RectTransformUtility.RectangleContainsScreenPoint(rect, eventData.position, eventData.pressEventCamera);
     }
 
     private bool HandleTokenDrop(WhiteboxDraggableToken token, WhiteboxDropZone zone, bool showLog)
@@ -2480,18 +3404,13 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         if (token.TokenType == WhiteboxTokenType.Bread)
         {
-            if (cartNodeId != WhiteboxCartNodeId.KitchenDoor || token.SourceRegion != RegionID.Kitchen || kitchenProcess != KitchenProcessState.BreadAtDoor)
+            if (!CanLoadKitchenBreadOntoCart(token))
             {
                 AddLog("面包需要先从厨房内部移到门口，再在厨房门口装车。");
                 return false;
             }
 
-            cartCargo = CartCargo.Bread;
-            kitchenProcess = KitchenProcessState.Empty;
-            ConsumeToken(token);
-            AddLog("面包装车。小推车切换为托盘/面包状态。");
-            RefreshAll();
-            return true;
+            return LoadKitchenBreadOntoCart(token);
         }
 
         AddLog("这个物品不能装车。");
@@ -2551,6 +3470,12 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             AddLog("清水放进厨房门口。进入厨房内部后可卸下清水。");
             RefreshAll();
             return true;
+        }
+
+        if (token.TokenType == WhiteboxTokenType.Bread &&
+            CanLoadKitchenBreadOntoCart(token))
+        {
+            return LoadKitchenBreadOntoCart(token);
         }
 
         AddLog("厨房门口只接收面粉和清水。");
@@ -2644,7 +3569,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             kitchenProcess = KitchenProcessState.WaterAdded;
             waterAtKitchenDoor = false;
             ConsumeToken(token);
-            AddLog("清水拖到案板上。点击案板开始和面。");
+            AddLog("清水加入面粉。案板图保持面粉状态，点击案板开始和面。");
             RefreshAll();
             return true;
         }
@@ -2687,7 +3612,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     {
         if (currentIndoorRoom != WhiteboxIndoorRoom.Kitchen)
         {
-            AddLog("需要进入厨房内部，把发酵面团拖到烤炉。");
+            AddLog("需要进入厨房内部，把发酵好的面团拖到烤炉。");
             return false;
         }
 
@@ -2704,19 +3629,25 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         if (kitchenProcess == KitchenProcessState.DoughMolded)
         {
-            AddLog("面团现在发霉，切回战时会变成发酵面团后再放入烤炉。");
+            AddLog("面团现在发霉，切回战时变成发酵好的面团后再放入烤炉。");
+            return false;
+        }
+
+        if (kitchenProcess == KitchenProcessState.DoughMixed)
+        {
+            AddLog("面团还没有发酵完成，先把厨房切到战时。");
             return false;
         }
 
         if (kitchenProcess != KitchenProcessState.DoughFermented)
         {
-            AddLog("面团还没有发酵完成，先把厨房切到战时发酵。");
+            AddLog("需要先在案板上揉好面团，再切到战时发酵。");
             return false;
         }
 
         kitchenProcess = KitchenProcessState.DoughInOven;
         ConsumeToken(token);
-        AddLog(ovenLit ? "发酵面团拖进已点燃的烤炉，开始烘烤。" : "发酵面团拖进烤炉。炉膛点燃后会开始烘烤。");
+        AddLog(ovenLit ? "发酵好的面团拖进已点燃的烤炉。" : "发酵好的面团拖进烤炉。炉膛点燃后会变成面包。");
         if (ovenLit)
         {
             StartBaking();
@@ -2992,9 +3923,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         RectTransform tokenRect = CreatePanel(tokenType.ToString(), parent, color);
         Place(tokenRect, normalizedPosition, new Vector2(114f, 64f));
         ApplyTokenSprite(tokenRect.GetComponent<Image>(), tokenType, color);
-
-        Text text = CreateText("Label", tokenRect, label, 13, FontStyle.Bold, ink, TextAnchor.MiddleCenter);
-        Stretch(text.rectTransform, new Vector2(4f, 2f), new Vector2(-4f, -2f));
+        HideTextChildren(tokenRect);
 
         CanvasGroup group = tokenRect.gameObject.AddComponent<CanvasGroup>();
         group.blocksRaycasts = true;
@@ -3210,6 +4139,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         RefreshCart();
         RefreshRoadNodes();
+        RefreshOutdoorDropZoneRaycasts();
         RefreshHud();
         RefreshActionButtons();
         RefreshIndoor();
@@ -3253,6 +4183,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private Sprite GetRegionBackgroundSprite(RegionView view, TimeState time)
     {
+        if (view.Region == RegionID.Kitchen && HasActiveKitchenRocket() && kitchenRocketBackgroundSprite != null)
+        {
+            return kitchenRocketBackgroundSprite;
+        }
+
         if (time == TimeState.Spring) return view.SpringBackground;
         if (time == TimeState.War) return view.WarBackground;
         return view.AutumnBackground;
@@ -3260,7 +4195,10 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private bool HasRegionBackgroundSprites(RegionView view)
     {
-        return view.SpringBackground != null || view.WarBackground != null || view.AutumnBackground != null;
+        return view.SpringBackground != null ||
+               view.WarBackground != null ||
+               view.AutumnBackground != null ||
+               (view.Region == RegionID.Kitchen && kitchenRocketBackgroundSprite != null);
     }
 
     private void SetActiveIfNotNull(Component component, bool active)
@@ -3324,6 +4262,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         if (cartVisual != null)
         {
+            HideTextChildren(cartVisual);
             if (boardOverlay != null)
             {
                 PlaceOnBoard(cartVisual, cartNodes[cartNodeId].BoardPosition, cartVisualSize);
@@ -3340,7 +4279,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         if (cartText != null)
         {
-            cartText.text = GetCartDirectionIcon() + " 小推车\n" + GetCargoName(cartCargo);
+            cartText.text = "";
         }
 
         SyncCartCargoToken();
@@ -3348,7 +4287,8 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
     private void ApplyCartImage(bool moving)
     {
-        if (cartImage == null)
+        Image image = ResolveCartImage();
+        if (image == null)
         {
             return;
         }
@@ -3356,15 +4296,36 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         Sprite sprite = GetCartSprite(moving);
         if (sprite != null)
         {
-            cartImage.sprite = sprite;
-            cartImage.color = Color.white;
-            cartImage.preserveAspect = true;
+            image.sprite = sprite;
+            image.color = Color.white;
+            image.preserveAspect = true;
         }
         else
         {
-            cartImage.sprite = null;
-            cartImage.color = GetCartColor();
+            image.sprite = null;
+            image.color = GetCartColor();
         }
+    }
+
+    private Image ResolveCartImage()
+    {
+        if (cartImage != null)
+        {
+            return cartImage;
+        }
+
+        if (cartVisual == null)
+        {
+            return null;
+        }
+
+        cartImage = cartVisual.GetComponent<Image>();
+        if (cartImage == null)
+        {
+            cartImage = cartVisual.GetComponentInChildren<Image>(true);
+        }
+
+        return cartImage;
     }
 
     private Sprite GetCartSprite(bool moving)
@@ -3446,6 +4407,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             }
         }
 
+        if (cargo != CartCargo.Empty)
+        {
+            return null;
+        }
+
         for (int i = 0; i < cartDirectionSprites.Count; i++)
         {
             CartDirectionSpriteBinding binding = cartDirectionSprites[i];
@@ -3467,6 +4433,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             {
                 return binding.Sprite;
             }
+        }
+
+        if (cargo != CartCargo.Empty)
+        {
+            return null;
         }
 
         for (int i = 0; i < cartMoveSprites.Count; i++)
@@ -3566,6 +4537,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         if (cartCargoToken.transform == cartVisual)
         {
             cartCargoToken.DisablePersistentToken();
+            EnsureCartDropZoneRaycastEnabled();
         }
         else
         {
@@ -3573,6 +4545,27 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         }
 
         cartCargoToken = null;
+    }
+
+    private void EnsureCartDropZoneRaycastEnabled()
+    {
+        if (cartVisual == null)
+        {
+            return;
+        }
+
+        CanvasGroup group = cartVisual.GetComponent<CanvasGroup>();
+        if (group != null)
+        {
+            group.blocksRaycasts = true;
+            group.interactable = true;
+        }
+
+        Image image = cartImage != null ? cartImage : cartVisual.GetComponent<Image>();
+        if (image != null)
+        {
+            image.raycastTarget = true;
+        }
     }
 
     private void RefreshRoadNodes()
@@ -3697,9 +4690,46 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             harvestWheatButton.interactable = false;
         }
 
-        if (collectWaterButton != null && waterCollected)
+        if (collectWaterButton != null)
         {
-            collectWaterButton.interactable = false;
+            collectWaterButton.interactable = CanCollectWaterNow();
+        }
+    }
+
+    private void RefreshOutdoorDropZoneRaycasts()
+    {
+        SetDropZoneRaycastEnabled(kitchenDoorDropZoneRect, kitchenDoorDropZone, currentIndoorRoom == WhiteboxIndoorRoom.None);
+        SetDropZoneRaycastEnabled(
+            cellarEntranceDropZoneRect,
+            cellarEntranceDropZone,
+            currentIndoorRoom == WhiteboxIndoorRoom.None && regionTimes[RegionID.Cellar] == TimeState.Spring);
+    }
+
+    private void SetDropZoneRaycastEnabled(RectTransform rect, WhiteboxDropZone zone, bool enabled)
+    {
+        if (zone != null)
+        {
+            zone.enabled = enabled;
+        }
+
+        if (rect == null)
+        {
+            return;
+        }
+
+        CanvasGroup group = rect.GetComponent<CanvasGroup>();
+        if (group == null)
+        {
+            group = rect.gameObject.AddComponent<CanvasGroup>();
+        }
+
+        group.blocksRaycasts = enabled;
+        group.interactable = enabled;
+
+        Image image = rect.GetComponent<Image>();
+        if (image != null)
+        {
+            image.raycastTarget = enabled;
         }
     }
 
@@ -3903,7 +4933,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         bool showBreadReady = kitchen && kitchenProcess == KitchenProcessState.BreadReady;
 
         SetKitchenPersistentObject(kitchenRawDoughImage, WhiteboxTokenType.Dough, showRawDough, false);
-        SetKitchenPersistentObject(kitchenFermentedDoughImage, WhiteboxTokenType.Dough, showFermentedDough, true);
+        SetKitchenPersistentObject(kitchenFermentedDoughImage, WhiteboxTokenType.Dough, showFermentedDough, showFermentedDough);
         SetKitchenPersistentObject(kitchenMoldedDoughImage, WhiteboxTokenType.Dough, showMoldedDough, false);
         SetKitchenPersistentObject(kitchenBreadReadyImage, WhiteboxTokenType.Bread, showBreadReady, true);
     }
@@ -3915,8 +4945,28 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             return;
         }
 
+        HideTextChildren(image.rectTransform);
         image.gameObject.SetActive(visible);
         image.raycastTarget = visible && draggable;
+
+        if (visible)
+        {
+            Sprite sprite = image.sprite != null ? image.sprite : GetTokenSprite(tokenType);
+
+            if (sprite != null)
+            {
+                image.sprite = sprite;
+                image.color = Color.white;
+                image.preserveAspect = true;
+            }
+            else
+            {
+                image.sprite = null;
+                image.color = GetDragTokenFallbackColor(tokenType);
+            }
+
+            image.rectTransform.SetAsLastSibling();
+        }
 
         if (!visible || !draggable)
         {
@@ -3930,6 +4980,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             group = image.gameObject.AddComponent<CanvasGroup>();
         }
 
+        group.alpha = 1f;
         group.blocksRaycasts = true;
         group.interactable = true;
 
@@ -3941,6 +4992,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
 
         token.Initialize(this, tokenType, RegionID.Kitchen, false);
         token.enabled = true;
+
         if (!activeTokens.Contains(token))
         {
             activeTokens.Add(token);
@@ -4029,7 +5081,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     private Sprite GetPrepBoardSprite()
     {
         if (kitchenProcess == KitchenProcessState.FlourPlaced) return prepBoardFlourSprite;
-        if (kitchenProcess == KitchenProcessState.WaterAdded) return prepBoardFlourWaterSprite;
+        if (kitchenProcess == KitchenProcessState.WaterAdded) return prepBoardFlourSprite;
         if (kitchenProcess == KitchenProcessState.DoughMixed) return prepBoardDoughSprite;
         if (kitchenProcess == KitchenProcessState.DoughFermented) return prepBoardFermentedDoughSprite != null ? prepBoardFermentedDoughSprite : prepBoardDoughSprite;
         if (kitchenProcess == KitchenProcessState.DoughMolded) return prepBoardMoldedDoughSprite != null ? prepBoardMoldedDoughSprite : prepBoardDoughSprite;
@@ -4234,7 +5286,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             fireHint = "点火事件：A-2 切到战时、A-1 保持春天、A-3 切到战时，火箭才会钉到窗户。";
         }
 
-        return "时间：" + GetTimeName(time) + "。案板只在春天可用；面团会随厨房时间变化：春天生面团，战时发酵，战后发霉。\n" + fireHint;
+        return "时间：" + GetTimeName(time) + "。案板只在春天可用；清水加入后案板图不变，点击案板变成揉好面团；切到战时变成发酵好的面团，战后发霉。\n" + fireHint;
     }
 
 
@@ -4288,11 +5340,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         else if (kitchenProcess == KitchenProcessState.WaterAdded)
         {
             parts.Add("面粉");
-            parts.Add("水");
+            parts.Add("已加水");
         }
         else if (kitchenProcess == KitchenProcessState.DoughMixed)
         {
-            parts.Add("生面团");
+            parts.Add("揉好面团");
         }
         else if (kitchenProcess == KitchenProcessState.DoughFermented)
         {
@@ -4488,6 +5540,24 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         label.horizontalOverflow = HorizontalWrapMode.Overflow;
         label.verticalOverflow = VerticalWrapMode.Overflow;
         return label;
+    }
+
+    private void HideTextChildren(Transform target)
+    {
+        if (target == null)
+        {
+            return;
+        }
+
+        Text[] labels = target.GetComponentsInChildren<Text>(true);
+        for (int i = 0; i < labels.Length; i++)
+        {
+            if (labels[i] != null)
+            {
+                labels[i].text = "";
+                labels[i].gameObject.SetActive(false);
+            }
+        }
     }
 
     private void Anchor(RectTransform rect, Vector2 min, Vector2 max, Vector2 offsetMin, Vector2 offsetMax)
@@ -4722,53 +5792,35 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
 
         bool cartCargoProxy = controller.IsCartCargoVisual(transform);
         Sprite tokenSprite = controller.GetDragTokenSprite(TokenType);
+
         Image sourceImage = GetComponent<Image>();
         Image proxyImage = proxy.GetComponent<Image>();
         proxyImage.raycastTarget = false;
-        if (tokenSprite != null)
+
+        
+        if (!cartCargoProxy && sourceImage != null && sourceImage.sprite != null)
+        {
+            proxyImage.sprite = sourceImage.sprite;
+            proxyImage.color = sourceImage.color.a <= 0.01f ? Color.white : sourceImage.color;
+            proxyImage.preserveAspect = true;
+        }
+        else if (tokenSprite != null)
         {
             proxyImage.sprite = tokenSprite;
             proxyImage.color = Color.white;
             proxyImage.preserveAspect = true;
         }
-        else if (!cartCargoProxy && sourceImage != null)
-        {
-            proxyImage.sprite = sourceImage.sprite;
-            proxyImage.color = sourceImage.color;
-            proxyImage.preserveAspect = sourceImage.preserveAspect;
-        }
         else
         {
+            proxyImage.sprite = null;
             proxyImage.color = controller.GetDragTokenFallbackColor(TokenType);
         }
 
-        Text sourceText = cartCargoProxy ? null : GetComponentInChildren<Text>(true);
-        string fallbackLabel = controller.GetDragTokenLabel(TokenType);
-        if (sourceText != null || tokenSprite == null || cartCargoProxy)
-        {
-            GameObject textObject = new GameObject("Label", typeof(RectTransform), typeof(Text));
-            textObject.transform.SetParent(proxy.transform, false);
-            RectTransform textRect = textObject.GetComponent<RectTransform>();
-            textRect.anchorMin = Vector2.zero;
-            textRect.anchorMax = Vector2.one;
-            textRect.offsetMin = Vector2.zero;
-            textRect.offsetMax = Vector2.zero;
-
-            Text proxyText = textObject.GetComponent<Text>();
-            proxyText.font = sourceText != null ? sourceText.font : Resources.GetBuiltinResource<Font>("LegacyRuntime.ttf");
-            proxyText.text = sourceText != null ? sourceText.text : fallbackLabel;
-            proxyText.fontSize = sourceText != null ? sourceText.fontSize : 18;
-            proxyText.fontStyle = sourceText != null ? sourceText.fontStyle : FontStyle.Bold;
-            proxyText.color = sourceText != null ? sourceText.color : Color.black;
-            proxyText.alignment = sourceText != null ? sourceText.alignment : TextAnchor.MiddleCenter;
-            proxyText.raycastTarget = false;
-            proxyText.horizontalOverflow = sourceText != null ? sourceText.horizontalOverflow : HorizontalWrapMode.Wrap;
-            proxyText.verticalOverflow = sourceText != null ? sourceText.verticalOverflow : VerticalWrapMode.Overflow;
-        }
-
         CanvasGroup proxyGroup = proxy.GetComponent<CanvasGroup>();
+        proxyGroup.alpha = 1f;
         proxyGroup.blocksRaycasts = false;
         proxyGroup.interactable = false;
+
         proxy.transform.SetAsLastSibling();
         return proxyRect;
     }
@@ -4781,4 +5833,5 @@ public sealed class WhiteboxDraggableToken : MonoBehaviour, IBeginDragHandler, I
             dragProxy = null;
         }
     }
+    
 }
