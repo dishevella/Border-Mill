@@ -1,6 +1,7 @@
 using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 
 public class PreludeManager : MonoBehaviour
 {
@@ -133,6 +134,10 @@ public class PreludeManager : MonoBehaviour
 
     [Header("Rocket Rotation")]
     public float rocketRotationOffset = 135f;
+
+    [Header("Scene Load")]
+    public string nextSceneName = "MainScene";
+    public float loadSceneDelay = 0.5f;
 
     private Coroutine windmillAnimCoroutine;
     private Coroutine[] rocketAnimCoroutines;
@@ -854,6 +859,10 @@ public class PreludeManager : MonoBehaviour
         inputLocked = true;
 
         Debug.Log("Timeline rewind finished. Next step: load scene.");
+
+        yield return new WaitForSeconds(loadSceneDelay);
+
+        SceneManager.LoadScene(nextSceneName);
     }
 
     IEnumerator FadeTimeline(float from, float to, float duration)

@@ -608,6 +608,7 @@ RectTransform:
   m_LocalScale: {x: 0, y: 0, z: 0}
   m_ConstrainProportionsScale: 0
   m_Children:
+  - {fileID: 355223197}
   - {fileID: 1846639341}
   - {fileID: 434318079}
   - {fileID: 147512805}
@@ -817,6 +818,81 @@ CanvasGroup:
   m_Interactable: 0
   m_BlocksRaycasts: 0
   m_IgnoreParentGroups: 0
+--- !u!1 &355223196
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 355223197}
+  - component: {fileID: 355223199}
+  - component: {fileID: 355223198}
+  m_Layer: 5
+  m_Name: Image
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!224 &355223197
+RectTransform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 355223196}
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 267071103}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMax: {x: 1, y: 1}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
+  m_Pivot: {x: 0.5, y: 0.5}
+--- !u!114 &355223198
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 355223196}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: fe87c0e1cc204ed48ad3b37840f39efc, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
+  m_Material: {fileID: 0}
+  m_Color: {r: 0.7106918, g: 0.42686203, b: 0.42686203, a: 1}
+  m_RaycastTarget: 1
+  m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
+  m_Maskable: 1
+  m_OnCullStateChanged:
+    m_PersistentCalls:
+      m_Calls: []
+  m_Sprite: {fileID: 0}
+  m_Type: 0
+  m_PreserveAspect: 0
+  m_FillCenter: 1
+  m_FillMethod: 4
+  m_FillAmount: 1
+  m_FillClockwise: 1
+  m_FillOrigin: 0
+  m_UseSpriteMesh: 0
+  m_PixelsPerUnitMultiplier: 1
+--- !u!222 &355223199
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 355223196}
+  m_CullTransparentMesh: 1
 --- !u!1 &360196463
 GameObject:
   m_ObjectHideFlags: 0
@@ -1658,6 +1734,8 @@ MonoBehaviour:
   autumnPlaceholderColor: {r: 0.95, g: 0.62, b: 0.18, a: 1}
   pulseHint: {fileID: 434318079}
   pulseHintImage: {fileID: 0}
+  hintLayer: {fileID: 0}
+  rootCanvas: {fileID: 0}
   centerClickArea: {fileID: 1888451992}
   centerClickButton: {fileID: 1888451989}
   rockets:
@@ -1680,7 +1758,27 @@ MonoBehaviour:
   autumnFlashFadeTime: 0.2
   autumnFlashHoldTime: 0.18
   autumnFinalFadeTime: 0.7
-  autumnBetweenDelay: 0.25
+  afterAutumnRainTime: 2.5
+  ambienceSource: {fileID: 0}
+  musicSource: {fileID: 0}
+  arrowSource: {fileID: 0}
+  glassBreakSource: {fileID: 0}
+  springClip: {fileID: 0}
+  warClip: {fileID: 0}
+  autumnClip: {fileID: 0}
+  sadClip: {fileID: 0}
+  arrowClip: {fileID: 0}
+  glassBreakClip: {fileID: 0}
+  springVolume: 0.7
+  warVolume: 0.8
+  autumnVolume: 0.65
+  sadVolume: 0.75
+  sadTimelineVolume: 0.25
+  arrowVolume: 0.8
+  arrowPitch: 1
+  glassBreakVolume: 1
+  glassBreakPitch: 1
+  audioFadeTime: 0.8
   timelinePanel: {fileID: 296172379}
   timelineCanvasGroup: {fileID: 296172381}
   timelineKnob: {fileID: 33871351}
@@ -1691,6 +1789,21 @@ MonoBehaviour:
   timelineMoveTime: 1
   timelineMiddlePauseTime: 0.5
   timelineEndPauseTime: 0.4
+  timelineSceneFadeTime: 0.8
+  warGirlImage: {fileID: 0}
+  autumnGirlImage: {fileID: 0}
+  girlFadeTime: 0.8
+  windmillImage: {fileID: 0}
+  windmillFrames: []
+  windmillFps: 8
+  rocketImages: []
+  rocketFrames: []
+  rocketFps: 12
+  rocketStartScale: {x: 0.45, y: 0.45, z: 1}
+  rocketEndScale: {x: 1.15, y: 1.15, z: 1}
+  rainImage: {fileID: 0}
+  rainAnimator: {fileID: 0}
+  rocketRotationOffset: 135
 --- !u!4 &1212715962
 Transform:
   m_ObjectHideFlags: 0
