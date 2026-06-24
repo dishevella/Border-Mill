@@ -1,10 +1,10 @@
 fileFormatVersion: 2
-guid: 724de81f3af17ab43b05a818ff325676
+guid: aecf35a77acfde7408b1444b24f15c1d
 TextureImporter:
   internalIDToNameTable:
   - first:
-      213: -8531773098901168783
-    second: quit_button_true_transparent_hard_0
+      213: -4348323462523142336
+    second: img_v3_0211l_cf8b43d2-09e3-4bb4-99de-94a9fc3f62cg_0
   externalObjects: {}
   serializedVersion: 13
   mipmaps:
@@ -46,13 +46,13 @@ TextureImporter:
   nPOTScale: 0
   lightmap: 0
   compressionQuality: 50
-  spriteMode: 1
+  spriteMode: 2
   spriteExtrude: 1
   spriteMeshType: 1
   alignment: 0
   spritePivot: {x: 0.5, y: 0.5}
   spritePixelsToUnits: 100
-  spriteBorder: {x: 439, y: 170, z: 416, w: 158}
+  spriteBorder: {x: 0, y: 0, z: 0, w: 0}
   spriteGenerateFallbackPhysicsShape: 1
   alphaUsage: 1
   alphaIsTransparency: 1
@@ -113,23 +113,23 @@ TextureImporter:
     serializedVersion: 2
     sprites:
     - serializedVersion: 2
-      name: quit_button_true_transparent_hard_0
+      name: img_v3_0211l_cf8b43d2-09e3-4bb4-99de-94a9fc3f62cg_0
       rect:
         serializedVersion: 2
-        x: 434
-        y: 170
-        width: 1198
-        height: 358
+        x: 0
+        y: 0
+        width: 2048
+        height: 2048
       alignment: 0
-      pivot: {x: 0.5, y: 0.5}
+      pivot: {x: 0, y: 0}
       border: {x: 0, y: 0, z: 0, w: 0}
       customData: 
       outline: []
       physicsShape: []
       tessellationDetail: -1
       bones: []
-      spriteID: 17d13cfd19d099980800000000000000
-      internalID: -8531773098901168783
+      spriteID: 04fbfc769d6a7a3c0800000000000000
+      internalID: -4348323462523142336
       vertices: []
       indices: 
       edges: []
@@ -138,8 +138,8 @@ TextureImporter:
     customData: 
     physicsShape: []
     bones: []
-    spriteID: 5e97eb03825dee720800000000000000
-    internalID: 1537655665
+    spriteID: 
+    internalID: 0
     vertices: []
     indices: 
     edges: []
@@ -148,7 +148,7 @@ TextureImporter:
     spriteCustomMetadata:
       entries: []
     nameFileIdTable:
-      quit_button_true_transparent_hard_0: -8531773098901168783
+      img_v3_0211l_cf8b43d2-09e3-4bb4-99de-94a9fc3f62cg_0: -4348323462523142336
   mipmapLimitGroupName: 
   pSDRemoveMatte: 0
   userData: 

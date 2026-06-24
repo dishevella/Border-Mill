@@ -276,6 +276,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     [SerializeField] private Image windmillImage;
     [SerializeField] private List<Sprite> windmillFrames = new List<Sprite>();
     [SerializeField] private float windmillFrameSeconds = 0.08f;
+    [SerializeField] private RectTransform windmillRoot;
 
     private Coroutine windmillRoutine;
 
@@ -435,6 +436,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
         RefreshWindmillFx();
         RefreshRegionRainFx();
         RefreshRegionRocketFx();
+        
 
         AddLog("初始全区域为春天。按道路点移动，跨格路段需要相关区域保持春天。");
     }
@@ -1307,11 +1309,11 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     }
     private void RefreshWindmillFx()
     {
-        bool shouldPlay =
+        bool shouldShow =
             regionTimes.ContainsKey(RegionID.Mill) &&
             regionTimes[RegionID.Mill] == TimeState.Spring;
 
-        if (shouldPlay)
+        if (shouldShow)
         {
             StartWindmillFx();
         }
@@ -1325,8 +1327,23 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
     {
         if (windmillImage == null || windmillFrames == null || windmillFrames.Count == 0)
         {
+            SetWindmillVisible(false);
             return;
         }
+
+        Sprite firstFrame = GetFirstValidSprite(windmillFrames);
+        if (firstFrame == null)
+        {
+            SetWindmillVisible(false);
+            return;
+        }
+
+        SetWindmillVisible(true);
+
+        windmillImage.sprite = firstFrame;
+        windmillImage.color = Color.white;
+        windmillImage.raycastTarget = false;
+        windmillImage.preserveAspect = true;
 
         if (windmillRoutine != null)
         {
@@ -1344,35 +1361,20 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             windmillRoutine = null;
         }
 
-        if (windmillImage != null)
-        {
-            Sprite firstFrame = GetFirstValidSprite(windmillFrames);
-
-            if (firstFrame != null)
-            {
-                windmillImage.sprite = firstFrame;
-                windmillImage.color = Color.white;
-            }
-        }
+        SetWindmillVisible(false);
     }
 
     private IEnumerator PlayWindmillLoop()
     {
-        if (windmillImage == null || windmillFrames == null || windmillFrames.Count == 0)
-        {
-            yield break;
-        }
-
         Sprite firstFrame = GetFirstValidSprite(windmillFrames);
         if (firstFrame == null)
         {
+            SetWindmillVisible(false);
+            windmillRoutine = null;
             yield break;
         }
 
-        windmillImage.gameObject.SetActive(true);
-        windmillImage.raycastTarget = false;
-        windmillImage.color = Color.white;
-        windmillImage.preserveAspect = true;
+        SetWindmillVisible(true);
 
         float safeFrameSeconds = Mathf.Max(0.03f, windmillFrameSeconds);
         int frameIndex = 0;
@@ -1388,6 +1390,7 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             }
 
             frameIndex++;
+
             if (frameIndex >= windmillFrames.Count)
             {
                 frameIndex = 0;
@@ -1396,9 +1399,23 @@ public sealed class BorderMillWhiteboxController : MonoBehaviour
             yield return new WaitForSeconds(safeFrameSeconds);
         }
 
+        SetWindmillVisible(false);
         windmillRoutine = null;
     }
 
+    private void SetWindmillVisible(bool visible)
+    {
+        if (windmillRoot != null)
+        {
+            windmillRoot.gameObject.SetActive(visible);
+            return;
+        }
+
+        if (windmillImage != null)
+        {
+            windmillImage.gameObject.SetActive(visible);
+        }
+    }
     private void CreateRegionRocketImages()
     {
         ClearRegionRocketImages();

@@ -281,7 +281,7 @@ MonoBehaviour:
   cellarRegion:
     Root: {fileID: 1765982816}
     Background: {fileID: 0}
-    SpringBackground: {fileID: 21300000, guid: 28a45f799c44850489ee17f5c525228a, type: 3}
+    SpringBackground: {fileID: -4348323462523142336, guid: aecf35a77acfde7408b1444b24f15c1d, type: 3}
     WarBackground: {fileID: 3696852281484810706, guid: d42a85674a64bc745a6590aadc2c32cd, type: 3}
     AutumnBackground: {fileID: -9156499770636182481, guid: 5e86ea8ca1e219648a79c101b0d5d2ec, type: 3}
     Title: {fileID: 0}
@@ -446,6 +446,7 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 16cc0e735e754f24d800026f62c2c056, type: 3}
   - {fileID: 21300000, guid: 90584b58cc08844448d09a45275dda60, type: 3}
   windmillFrameSeconds: 0.08
+  windmillRoot: {fileID: 2145276709}
   indoorRoot: {fileID: 846367437}
   kitchenIndoorRoot: {fileID: 603243802}
   cellarIndoorRoot: {fileID: 1509292840}

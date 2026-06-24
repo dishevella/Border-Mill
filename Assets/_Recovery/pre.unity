@@ -1803,7 +1803,7 @@ MonoBehaviour:
   rainImage: {fileID: 131271148}
   rainAnimator: {fileID: 131271151}
   rocketRotationOffset: 135
-  nextSceneName: MainScene
+  nextSceneName: wang-scene
   loadSceneDelay: 0.5
 --- !u!4 &1212715962
 Transform:
